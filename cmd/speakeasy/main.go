@@ -329,15 +329,25 @@ func voiceInput(cfg config.Config) (rec voice.Recorder, tr voice.Transcriber, wa
 	if cfg.STT == "off" {
 		return nil, nil, ""
 	}
-	if cfg.STTKey == "" {
-		return nil, nil, fmt.Sprintf("aviso: falta %s, así que no puedo transcribir; el Enter vacío queda sin efecto", cfg.STTKeyEnv)
-	}
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		return nil, nil, "aviso: no encuentro ffmpeg (`brew install ffmpeg`), así que no puedo grabar; el Enter vacío queda sin efecto"
 	}
-	return voice.FFmpegRecorder{Path: "ffmpeg", Device: cfg.STTDevice},
-		voice.GroqTranscriber{Base: cfg.STTBase, Key: cfg.STTKey, Model: cfg.STTModel},
-		""
+	rec = voice.FFmpegRecorder{Path: "ffmpeg", Device: cfg.STTDevice}
+	switch cfg.STT {
+	case "whisper":
+		if _, err := exec.LookPath(cfg.WhisperBin); err != nil {
+			return nil, nil, "aviso: no encuentro whisper-cli (`brew install whisper-cpp`), así que no puedo transcribir; el Enter vacío queda sin efecto"
+		}
+		if _, err := os.Stat(cfg.WhisperModel); err != nil {
+			return nil, nil, fmt.Sprintf("aviso: no encuentro el modelo de whisper en %s (bajá ggml-small.en.bin de ggerganov/whisper.cpp); el Enter vacío queda sin efecto", cfg.WhisperModel)
+		}
+		return rec, voice.WhisperCPP{Bin: cfg.WhisperBin, Model: cfg.WhisperModel}, ""
+	default:
+		if cfg.STTKey == "" {
+			return nil, nil, fmt.Sprintf("aviso: falta %s, así que no puedo transcribir; el Enter vacío queda sin efecto", cfg.STTKeyEnv)
+		}
+		return rec, voice.GroqTranscriber{Base: cfg.STTBase, Key: cfg.STTKey, Model: cfg.STTModel}, ""
+	}
 }
 
 // micLabel names the transcription backend, or off.

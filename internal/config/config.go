@@ -44,6 +44,8 @@ type Config struct {
 	STTBase      string
 	STTKeyEnv    string
 	STTKey       string
+	WhisperBin   string
+	WhisperModel string
 	RecordMaxSec int
 	RecordMax    time.Duration
 }
@@ -124,12 +126,14 @@ func Parse(args []string) (Config, error) {
 	fs.BoolVar(&c.Mute, "mute", false, "text only, no voice")
 	fs.IntVar(&c.MemLimitMiB, "mem-limit", 256, "soft memory limit for this process, in MiB")
 	fs.BoolVar(&c.SelfTest, "selftest", false, "check the configured chat, corrections and voice, then exit")
-	fs.StringVar(&c.STT, "stt", envOr("SPEAKEASY_STT", "groq"), "speech to text: groq or off (Enter on an empty line records)")
+	fs.StringVar(&c.STT, "stt", envOr("SPEAKEASY_STT", "groq"), "speech to text: groq, whisper (local) or off (Enter on an empty line records)")
 	fs.StringVar(&c.STTModel, "stt-model", envOr("SPEAKEASY_STT_MODEL", "whisper-large-v3-turbo"), "transcription model")
 	fs.StringVar(&c.STTLang, "stt-lang", envOr("SPEAKEASY_STT_LANG", "en"), "language you speak, ISO-639-1 (empty = guess)")
 	fs.StringVar(&c.STTDevice, "stt-device", envOr("SPEAKEASY_STT_DEVICE", ":0"), "ffmpeg avfoundation audio device")
 	fs.StringVar(&c.STTBase, "stt-base", envOr("SPEAKEASY_STT_BASE", "https://api.groq.com/openai/v1"), "OpenAI-compatible transcription base URL")
 	fs.StringVar(&c.STTKeyEnv, "stt-key-env", envOr("SPEAKEASY_STT_KEY_ENV", "GROQ_API_KEY"), "environment variable with the transcription key")
+	fs.StringVar(&c.WhisperBin, "whisper-bin", envOr("SPEAKEASY_WHISPER_BIN", "whisper-cli"), "whisper.cpp binary (for --stt whisper)")
+	fs.StringVar(&c.WhisperModel, "whisper-model", envOr("SPEAKEASY_WHISPER_MODEL", filepath.Join(home, ".speakeasy", "models", "ggml-small.en.bin")), "whisper.cpp ggml model (for --stt whisper)")
 	fs.IntVar(&c.RecordMaxSec, "record-max", envInt("SPEAKEASY_RECORD_MAX", 30), "longest recording, in seconds")
 	if err := fs.Parse(args); err != nil {
 		return c, err
@@ -143,10 +147,10 @@ func Parse(args []string) (Config, error) {
 	})
 	c.User = strings.TrimSpace(c.User)
 	c.STT = strings.ToLower(strings.TrimSpace(c.STT))
-	if c.STT != "groq" && c.STT != "off" {
-		return c, fmt.Errorf("unknown stt %q (use groq or off)", c.STT)
+	if c.STT != "groq" && c.STT != "whisper" && c.STT != "off" {
+		return c, fmt.Errorf("unknown stt %q (use groq, whisper or off)", c.STT)
 	}
-	if c.STT != "off" {
+	if c.STT == "groq" {
 		c.STTKey = strings.TrimSpace(os.Getenv(c.STTKeyEnv))
 	}
 	if c.RecordMaxSec < 1 {

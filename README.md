@@ -152,12 +152,14 @@ Necesita tres cosas: `ffmpeg` (`brew install ffmpeg`), la clave `GROQ_API_KEY` y
 
 | Flag | Default | Qué hace |
 |---|---|---|
-| `--stt` | `groq` | `off` desactiva la voz |
+| `--stt` | `groq` | `groq` (nube), `whisper` (local) u `off` |
 | `--stt-model` | `whisper-large-v3-turbo` | modelo de transcripción |
 | `--stt-lang` | `en` | idioma que hablás (ISO-639-1; vacío = adivina) |
 | `--stt-device` | `:0` | dispositivo de `avfoundation` |
 | `--stt-base` | `https://api.groq.com/openai/v1` | endpoint compatible OpenAI |
 | `--stt-key-env` | `GROQ_API_KEY` | variable con la clave |
+| `--whisper-model` | `~/.speakeasy/models/ggml-small.en.bin` | modelo ggml para `--stt whisper` |
+| `--whisper-bin` | `whisper-cli` | binario de whisper.cpp |
 | `--record-max` | `30` | tope de grabación, en segundos |
 
 Detalles que importan:
@@ -166,7 +168,20 @@ Detalles que importan:
 - **Sin VAD**: si no hablás, la app detecta el silencio y dice `no entendí nada` en vez de mandarle ruido al tutor.
 - **Groq factura mínimo 10 s por request**, así que una frase de 3 s cuesta lo mismo que una de 10 (~$0.0001 con `turbo`).
 - La grabación la hace `ffmpeg` con `avfoundation`; si el índice del micrófono no es el 0, `ffmpeg -f avfoundation -list_devices true -i ""` los lista.
-- **Alternativa local, sin verificar**: Ollama expone `/v1/audio/transcriptions`; con `ollama pull mannix/whisper` podrías usar `--stt-base http://127.0.0.1:11434/v1 --stt-model mannix/whisper` y no sale audio de la máquina.
+- **Ojo**: `ollama pull mannix/whisper` no sirve. Ese modelo está hecho para *xOllama*, no para Ollama stock: lo baja y no lo puede correr.
+
+### Sin red: whisper local
+
+```sh
+brew install whisper-cpp
+mkdir -p ~/.speakeasy/models
+curl -L -o ~/.speakeasy/models/ggml-small.en.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
+
+./speakeasy --provider ollama --llm qwen3.5:9b --stt whisper
+```
+
+Con `--stt whisper` el audio **no sale de la máquina**: se escribe un WAV temporal, lo transcribe `whisper-cli` y se borra. Medido en este M4 con `ggml-small.en.bin` (465 MB): **0.6 s por frase** con el modelo en caché de página, 1.7 s la primera vez que se carga. No necesita clave ni daemon; compite por RAM con el LLM (small ~0.5 GB, así que con `qwen3.5:9b` quedan ~6 GB usados de 16).
 
 ## Niveles
 
@@ -307,4 +322,4 @@ Se desarrolló con servidores simulados (Ollama y compatible con OpenAI). **Veri
 - Que Groq acepta `max_tokens`, el modo JSON (`response_format: json_object`) con tu modelo y el streaming tal como lo implementa el cliente (el uso de tokens se lee de `usage` o `x_groq.usage`; si no llega, `/status` lo indica).
 - Que el modelo elegido cumple el formato JSON de las correcciones. Ya no rompe la sesión: el parser acepta lista desnuda, `[]` y comillas sin escapar, pero un modelo que no corrija nada útil igual te deja sin `✎`.
 - xAI y `custom` comparten el mismo cliente que Groq, pero no se han probado contra esas APIs.
-- La entrada por voz está probada con grabador y transcriptor simulados, no con micrófono real ni con tu clave: falta una sesión hablada de punta a punta.
+- La entrada por voz está probada con micrófono simulado: falta una sesión hablada real. El camino local además se probó con `whisper-cli` y el modelo reales sobre audio sintetizado; el camino Groq no se probó con tu clave.

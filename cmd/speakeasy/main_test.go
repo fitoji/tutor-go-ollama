@@ -22,6 +22,7 @@ import (
 	"speakeasy/internal/openai"
 	"speakeasy/internal/speech"
 	"speakeasy/internal/tutor"
+	"speakeasy/internal/voice"
 )
 
 // capture runs fn with os.Stdout and os.Stderr replaced by pipes and returns
@@ -908,7 +909,23 @@ func TestVoiceInput(t *testing.T) {
 	if rec, tr, warn := voiceInput(config.Config{STT: "groq", STTKeyEnv: "GROQ_API_KEY"}); rec != nil || tr != nil || !strings.Contains(warn, "GROQ_API_KEY") {
 		t.Errorf("no key: %v %v %q", rec, tr, warn)
 	}
-	rec, tr, warn := voiceInput(config.Config{STT: "groq", STTKey: "k", STTModel: "m", STTDevice: ":1"})
+	// Local whisper: a missing model is caught before opening the mic.
+	missing := filepath.Join(t.TempDir(), "nope.bin")
+	if rec, tr, warn := voiceInput(config.Config{STT: "whisper", WhisperBin: "sh", WhisperModel: missing}); rec != nil || tr != nil || !strings.Contains(warn, "modelo de whisper") {
+		t.Errorf("whisper without model: %v %v %q", rec, tr, warn)
+	}
+	model := filepath.Join(t.TempDir(), "ggml.bin")
+	if err := os.WriteFile(model, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rec, tr, warn := voiceInput(config.Config{STT: "whisper", WhisperBin: "sh", WhisperModel: model})
+	if rec == nil || tr == nil || warn != "" {
+		t.Errorf("whisper ready: %v %v %q", rec, tr, warn)
+	}
+	if _, ok := tr.(voice.WhisperCPP); !ok {
+		t.Errorf("whisper backend = %T", tr)
+	}
+	rec, tr, warn = voiceInput(config.Config{STT: "groq", STTKey: "k", STTModel: "m", STTDevice: ":1"})
 	if rec == nil || tr == nil || warn != "" {
 		t.Errorf("enabled: %v %v %q", rec, tr, warn)
 	}
