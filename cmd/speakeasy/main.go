@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
 	"runtime/debug"
 	"strings"
@@ -26,6 +27,7 @@ import (
 	"speakeasy/internal/selftest"
 	"speakeasy/internal/speech"
 	"speakeasy/internal/tutor"
+	"speakeasy/internal/voice"
 )
 
 func main() {
@@ -100,6 +102,11 @@ func run() error {
 		}
 	}
 
+	rec, tr, warn := voiceInput(cfg)
+	if warn != "" {
+		fmt.Fprintln(os.Stderr, warn)
+	}
+
 	finish := func() {
 		if spk != nil {
 			spk.Stop()
@@ -130,7 +137,7 @@ func run() error {
 		}
 	}()
 
-	fmt.Printf("speakeasy · %s · %s: %s · voz=%s · ctx=%d · /help para ver comandos\n", cfg.User, cfg.Provider, cfg.LLM, ttsLabel(cfg, spk), cfg.NumCtx)
+	fmt.Printf("speakeasy · %s · %s: %s · voz=%s · mic=%s · ctx=%d · /help para ver comandos\n", cfg.User, cfg.Provider, cfg.LLM, ttsLabel(cfg, spk), micLabel(cfg, rec), cfg.NumCtx)
 	if cfg.Remote() {
 		fmt.Printf("aviso: tus mensajes se envían a %s\n", hostOf(cfg.APIBase))
 	}
@@ -203,6 +210,12 @@ func run() error {
 		line := strings.TrimSpace(sc.Text())
 		switch {
 		case line == "":
+			if rec == nil || tr == nil {
+				continue
+			}
+			if err := recordTurn(ctx, sc, rec, tr, cfg.STTLang, cfg.RecordMax, os.Stdout, runTurn); err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+			}
 			continue
 		case line == "/quit" || line == "/exit":
 			finish()
@@ -309,6 +322,80 @@ func ttsLabel(cfg config.Config, spk *speech.Speaker) string {
 	return cfg.TTS
 }
 
+// voiceInput builds the voice pipeline. When voice input is enabled but cannot
+// work it returns a warning and nil interfaces, so an empty line stays inert
+// instead of opening the microphone for nothing.
+func voiceInput(cfg config.Config) (rec voice.Recorder, tr voice.Transcriber, warn string) {
+	if cfg.STT == "off" {
+		return nil, nil, ""
+	}
+	if cfg.STTKey == "" {
+		return nil, nil, fmt.Sprintf("aviso: falta %s, así que no puedo transcribir; el Enter vacío queda sin efecto", cfg.STTKeyEnv)
+	}
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return nil, nil, "aviso: no encuentro ffmpeg (`brew install ffmpeg`), así que no puedo grabar; el Enter vacío queda sin efecto"
+	}
+	return voice.FFmpegRecorder{Path: "ffmpeg", Device: cfg.STTDevice},
+		voice.GroqTranscriber{Base: cfg.STTBase, Key: cfg.STTKey, Model: cfg.STTModel},
+		""
+}
+
+// micLabel names the transcription backend, or off.
+func micLabel(cfg config.Config, rec voice.Recorder) string {
+	if rec == nil {
+		return "off"
+	}
+	return cfg.STT
+}
+
+// recordTurn records one utterance, transcribes it and hands the text to run.
+// It is split out of the loop so a test can drive it with fake recorder and
+// transcriber, without a microphone or a network.
+func recordTurn(ctx context.Context, sc *bufio.Scanner, rec voice.Recorder, tr voice.Transcriber, lang string, max time.Duration, out io.Writer, run func(string)) error {
+	fmt.Fprint(out, "🎙  grabando… (Enter para cortar)")
+	rctx, cancel := context.WithCancel(ctx)
+	type captured struct {
+		pcm []byte
+		err error
+	}
+	ch := make(chan captured, 1)
+	go func() {
+		pcm, err := rec.Record(rctx, max)
+		ch <- captured{pcm, err}
+	}()
+	sc.Scan() // the second Enter, or EOF
+	cancel()
+	fmt.Fprintln(out)
+
+	// The recorder is supposed to honour the cancel; this bound is the safety
+	// net that keeps a wedged one from hanging the session.
+	var got captured
+	select {
+	case got = <-ch:
+	case <-time.After(5 * time.Second):
+		return errors.New("la grabación no terminó a tiempo")
+	}
+	if got.err != nil {
+		return got.err
+	}
+	if voice.Silent(got.pcm) {
+		fmt.Fprintln(out, "no entendí nada (silencio)")
+		return nil
+	}
+	text, err := tr.Transcribe(ctx, got.pcm, lang)
+	if err != nil {
+		return err
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		fmt.Fprintln(out, "no entendí nada")
+		return nil
+	}
+	fmt.Fprintf(out, "tú (voz)> %s\n", text)
+	run(text)
+	return nil
+}
+
 func hostOf(base string) string {
 	if u, err := url.Parse(base); err == nil && u.Host != "" {
 		return u.Host
@@ -396,7 +483,9 @@ func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Con
 /forget clave olvidar un dato que el tutor guardó (ej: /forget city)
 /voice femenina  cambiar la voz (femenina, masculina o un nombre de ollama show phonon)
 /status       modelo, memoria usada y estado de la conversación
-/quit         salir`)
+/quit         salir
+
+Enter vacío   hablar en vez de escribir (graba hasta el próximo Enter)`)
 	case "/reset":
 		_ = store.Update(func(d *conv.Data) { d.Reset() })
 		fmt.Println("conversación reiniciada")

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"speakeasy/internal/speech"
 )
@@ -34,6 +35,17 @@ type Config struct {
 	APIBase   string // OpenAI-compatible base URL (remote providers)
 	APIKeyEnv string // name of the environment variable holding the key
 	APIKey    string
+
+	// Voice input: Enter on an empty line records and transcribes.
+	STT          string // groq or off
+	STTModel     string
+	STTLang      string // ISO-639-1; empty lets the model guess
+	STTDevice    string // ffmpeg avfoundation audio device
+	STTBase      string
+	STTKeyEnv    string
+	STTKey       string
+	RecordMaxSec int
+	RecordMax    time.Duration
 }
 
 // Remote reports whether the chat model runs on a remote API.
@@ -112,6 +124,13 @@ func Parse(args []string) (Config, error) {
 	fs.BoolVar(&c.Mute, "mute", false, "text only, no voice")
 	fs.IntVar(&c.MemLimitMiB, "mem-limit", 256, "soft memory limit for this process, in MiB")
 	fs.BoolVar(&c.SelfTest, "selftest", false, "check the configured chat, corrections and voice, then exit")
+	fs.StringVar(&c.STT, "stt", envOr("SPEAKEASY_STT", "groq"), "speech to text: groq or off (Enter on an empty line records)")
+	fs.StringVar(&c.STTModel, "stt-model", envOr("SPEAKEASY_STT_MODEL", "whisper-large-v3-turbo"), "transcription model")
+	fs.StringVar(&c.STTLang, "stt-lang", envOr("SPEAKEASY_STT_LANG", "en"), "language you speak, ISO-639-1 (empty = guess)")
+	fs.StringVar(&c.STTDevice, "stt-device", envOr("SPEAKEASY_STT_DEVICE", ":0"), "ffmpeg avfoundation audio device")
+	fs.StringVar(&c.STTBase, "stt-base", envOr("SPEAKEASY_STT_BASE", "https://api.groq.com/openai/v1"), "OpenAI-compatible transcription base URL")
+	fs.StringVar(&c.STTKeyEnv, "stt-key-env", envOr("SPEAKEASY_STT_KEY_ENV", "GROQ_API_KEY"), "environment variable with the transcription key")
+	fs.IntVar(&c.RecordMaxSec, "record-max", envInt("SPEAKEASY_RECORD_MAX", 30), "longest recording, in seconds")
 	if err := fs.Parse(args); err != nil {
 		return c, err
 	}
@@ -123,6 +142,20 @@ func Parse(args []string) (Config, error) {
 		}
 	})
 	c.User = strings.TrimSpace(c.User)
+	c.STT = strings.ToLower(strings.TrimSpace(c.STT))
+	if c.STT != "groq" && c.STT != "off" {
+		return c, fmt.Errorf("unknown stt %q (use groq or off)", c.STT)
+	}
+	if c.STT != "off" {
+		c.STTKey = strings.TrimSpace(os.Getenv(c.STTKeyEnv))
+	}
+	if c.RecordMaxSec < 1 {
+		c.RecordMaxSec = 1
+	}
+	if c.RecordMaxSec > 300 {
+		c.RecordMaxSec = 300
+	}
+	c.RecordMax = time.Duration(c.RecordMaxSec) * time.Second
 	// "femenina" / "masculina" pick a measured Phonon voice; any other value is
 	// an exact voice name.
 	c.Voice = speech.ResolveVoice(c.Voice)

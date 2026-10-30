@@ -19,7 +19,7 @@ Escribes en inglés (o en español; el tutor siempre responde en inglés). Mient
 
 Al arrancar te pregunta quién sos (`usuario:`); con Enter mantiene el último. Cada nombre guarda su propio nivel y sus propios errores, así que dos personas pueden compartir la máquina sin pisarse el perfil (ver [Un perfil por persona](#un-perfil-por-persona)).
 
-Comandos: `/reset`, `/level B2`, `/topic cine`, `/forget city`, `/voice femenina`, `/status`, `/quit`.
+Comandos: `/reset`, `/level B2`, `/topic cine`, `/forget city`, `/voice femenina`, `/status`, `/quit`. Con el micrófono configurado, **Enter vacío** graba.
 
 ## Proveedores
 
@@ -134,6 +134,39 @@ lo que sabe de vos: city=Madrid · country=Argentina · hobby=cooking · name=Fi
 - `/status` muestra todo lo que sabe; `/reset` borra la conversación pero **no** los datos.
 - Límites: 40 datos, clave de hasta 40 caracteres, valor de hasta 200. Los datos salen solo de lo que escribís: si el modelo devuelve un placeholder o algo que no está en tu mensaje, se descarta.
 - Los datos se extraen en la **pasada de revisión** (la misma que corrige), con salida JSON. `--corrections=false` oculta los `✎` pero la pasada sigue corriendo: es la que guarda los datos.
+
+## Entrada por voz
+
+Un **Enter vacío** en el prompt graba; el siguiente Enter corta, transcribe y manda el texto por el mismo camino que el tipeado:
+
+```
+tú>                                  ← Enter vacío
+🎙  grabando… (Enter para cortar)
+tú>                                  ← Enter de nuevo
+tú (voz)> I go to the cinema yesterday
+tutor> That sounds fun! What did you see?
+  ✎ "I go" → "I went" …
+```
+
+Necesita tres cosas: `ffmpeg` (`brew install ffmpeg`), la clave `GROQ_API_KEY` y permiso de micrófono para la terminal (macOS lo pide la primera vez; si lo negás, el mensaje te dice a dónde ir).
+
+| Flag | Default | Qué hace |
+|---|---|---|
+| `--stt` | `groq` | `off` desactiva la voz |
+| `--stt-model` | `whisper-large-v3-turbo` | modelo de transcripción |
+| `--stt-lang` | `en` | idioma que hablás (ISO-639-1; vacío = adivina) |
+| `--stt-device` | `:0` | dispositivo de `avfoundation` |
+| `--stt-base` | `https://api.groq.com/openai/v1` | endpoint compatible OpenAI |
+| `--stt-key-env` | `GROQ_API_KEY` | variable con la clave |
+| `--record-max` | `30` | tope de grabación, en segundos |
+
+Detalles que importan:
+
+- **El audio sale de tu máquina**: se sube al endpoint configurado, igual que el chat. Si no querés eso, `--stt off` y seguís escribiendo.
+- **Sin VAD**: si no hablás, la app detecta el silencio y dice `no entendí nada` en vez de mandarle ruido al tutor.
+- **Groq factura mínimo 10 s por request**, así que una frase de 3 s cuesta lo mismo que una de 10 (~$0.0001 con `turbo`).
+- La grabación la hace `ffmpeg` con `avfoundation`; si el índice del micrófono no es el 0, `ffmpeg -f avfoundation -list_devices true -i ""` los lista.
+- **Alternativa local, sin verificar**: Ollama expone `/v1/audio/transcriptions`; con `ollama pull mannix/whisper` podrías usar `--stt-base http://127.0.0.1:11434/v1 --stt-model mannix/whisper` y no sale audio de la máquina.
 
 ## Niveles
 
@@ -274,3 +307,4 @@ Se desarrolló con servidores simulados (Ollama y compatible con OpenAI). **Veri
 - Que Groq acepta `max_tokens`, el modo JSON (`response_format: json_object`) con tu modelo y el streaming tal como lo implementa el cliente (el uso de tokens se lee de `usage` o `x_groq.usage`; si no llega, `/status` lo indica).
 - Que el modelo elegido cumple el formato JSON de las correcciones. Ya no rompe la sesión: el parser acepta lista desnuda, `[]` y comillas sin escapar, pero un modelo que no corrija nada útil igual te deja sin `✎`.
 - xAI y `custom` comparten el mismo cliente que Groq, pero no se han probado contra esas APIs.
+- La entrada por voz está probada con grabador y transcriptor simulados, no con micrófono real ni con tu clave: falta una sesión hablada de punta a punta.

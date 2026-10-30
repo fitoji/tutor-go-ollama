@@ -1,0 +1,71 @@
+// Package voice turns speech into text: it records the microphone with ffmpeg
+// and asks an OpenAI-compatible endpoint to transcribe the audio.
+package voice
+
+import (
+	"context"
+	"encoding/binary"
+	"math"
+	"time"
+)
+
+// SampleRate is the rate the recorder captures at. It is also what Groq
+// downsamples to, so nothing is lost on the way out.
+const SampleRate = 16000
+
+// Recorder captures the microphone.
+type Recorder interface {
+	// Record captures until ctx is cancelled or max elapses, and returns raw
+	// 16-bit little-endian mono PCM at SampleRate.
+	Record(ctx context.Context, max time.Duration) ([]byte, error)
+}
+
+// Transcriber turns PCM into text.
+type Transcriber interface {
+	Transcribe(ctx context.Context, pcm []byte, lang string) (string, error)
+}
+
+// WAV wraps raw 16 kHz mono PCM in a WAV container, which is what the
+// transcription endpoints expect.
+func WAV(pcm []byte) []byte {
+	const hdr = 44
+	b := make([]byte, hdr+len(pcm))
+	copy(b[0:], "RIFF")
+	binary.LittleEndian.PutUint32(b[4:], uint32(36+len(pcm)))
+	copy(b[8:], "WAVE")
+	copy(b[12:], "fmt ")
+	binary.LittleEndian.PutUint32(b[16:], 16)           // fmt chunk size
+	binary.LittleEndian.PutUint16(b[20:], 1)            // PCM
+	binary.LittleEndian.PutUint16(b[22:], 1)            // mono
+	binary.LittleEndian.PutUint32(b[24:], SampleRate)   // sample rate
+	binary.LittleEndian.PutUint32(b[28:], SampleRate*2) // byte rate
+	binary.LittleEndian.PutUint16(b[32:], 2)            // block align
+	binary.LittleEndian.PutUint16(b[34:], 16)           // bits per sample
+	copy(b[36:], "data")
+	binary.LittleEndian.PutUint32(b[40:], uint32(len(pcm))) // data size
+	copy(b[hdr:], pcm)
+	return b
+}
+
+// minVoicedSamples is a fifth of a second at 16 kHz: below that there is no
+// utterance to transcribe, only a keypress.
+const minVoicedSamples = SampleRate / 5
+
+// silentRMS is about -48 dBFS: louder than room noise, quieter than speech.
+const silentRMS = 0.004
+
+// Silent reports whether the PCM carries no usable speech. Without VAD this is
+// the cheap guard that stops an accidental Enter from sending noise to the
+// tutor and paying for a transcription.
+func Silent(pcm []byte) bool {
+	n := len(pcm) / 2
+	if n < minVoicedSamples {
+		return true
+	}
+	var sum float64
+	for i := 0; i < n; i++ {
+		v := float64(int16(binary.LittleEndian.Uint16(pcm[2*i:]))) / 32768
+		sum += v * v
+	}
+	return math.Sqrt(sum/float64(n)) < silentRMS
+}

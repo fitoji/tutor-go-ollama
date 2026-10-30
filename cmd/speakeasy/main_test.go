@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"speakeasy/internal/config"
 	"speakeasy/internal/conv"
@@ -777,5 +779,137 @@ func TestNewChatterFollowsTheProvider(t *testing.T) {
 	cfg := config.Config{Provider: "groq", APIBase: "https://api.groq.com/openai/v1", APIKey: "k"}
 	if _, ok := newChatter(cfg, cl).(*openai.Client); !ok {
 		t.Error("a remote provider must use the OpenAI-compatible client")
+	}
+}
+
+// fakeRecorder returns a fixed buffer and records whether it was cancelled.
+type fakeRecorder struct {
+	pcm      []byte
+	err      error
+	canceled bool
+}
+
+// Record models the real contract: a cancelled capture still returns what it
+// already recorded, because raw PCM has no trailer to finalize.
+func (f *fakeRecorder) Record(ctx context.Context, max time.Duration) ([]byte, error) {
+	select {
+	case <-ctx.Done():
+		f.canceled = true
+	case <-time.After(time.Millisecond):
+	}
+	return f.pcm, f.err
+}
+
+type fakeTranscriber struct {
+	text string
+	err  error
+	lang string
+	got  []byte
+}
+
+func (f *fakeTranscriber) Transcribe(ctx context.Context, pcm []byte, lang string) (string, error) {
+	f.lang, f.got = lang, pcm
+	return f.text, f.err
+}
+
+func loudPCM() []byte {
+	b := make([]byte, 32000) // 1 s a 16 kHz
+	for i := 0; i < len(b); i += 2 {
+		b[i] = 0x88
+		b[i+1] = 0x13
+	}
+	return b
+}
+
+// TestRecordTurnSendsTheTranscript is the milestone in one test: Enter, record,
+// transcribe, and the text takes the same path as typing.
+func TestRecordTurnSendsTheTranscript(t *testing.T) {
+	rec := &fakeRecorder{pcm: loudPCM()}
+	tr := &fakeTranscriber{text: "  I went to the cinema yesterday.  "}
+	var out strings.Builder
+	var got string
+
+	err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", 30*time.Second, &out, func(s string) { got = s })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "I went to the cinema yesterday." {
+		t.Errorf("turn text = %q", got)
+	}
+	if tr.lang != "en" || len(tr.got) == 0 {
+		t.Errorf("transcriber got lang=%q pcm=%d", tr.lang, len(tr.got))
+	}
+	if !strings.Contains(out.String(), "grabando") || !strings.Contains(out.String(), "tú (voz)> I went") {
+		t.Errorf("output: %q", out.String())
+	}
+}
+
+// TestRecordTurnIgnoresSilence keeps an accidental Enter from paying for a
+// transcription and sending noise to the tutor.
+func TestRecordTurnIgnoresSilence(t *testing.T) {
+	rec := &fakeRecorder{pcm: make([]byte, 32000)}
+	tr := &fakeTranscriber{text: "should not be used"}
+	var out strings.Builder
+	called := false
+
+	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", time.Second, &out, func(string) { called = true }); err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Error("silence must not run a turn")
+	}
+	if !strings.Contains(out.String(), "no entendí nada") {
+		t.Errorf("output: %q", out.String())
+	}
+	if tr.got != nil {
+		t.Error("silence must not reach the transcriber")
+	}
+}
+
+func TestRecordTurnReportsErrors(t *testing.T) {
+	var out strings.Builder
+	rec := &fakeRecorder{err: errors.New("mic roto")}
+	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, &fakeTranscriber{}, "en", time.Second, &out, func(string) {}); err == nil || !strings.Contains(err.Error(), "mic roto") {
+		t.Errorf("recorder error lost: %v", err)
+	}
+
+	rec = &fakeRecorder{pcm: loudPCM()}
+	tr := &fakeTranscriber{err: errors.New("sin clave")}
+	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", time.Second, &out, func(string) {}); err == nil || !strings.Contains(err.Error(), "sin clave") {
+		t.Errorf("transcriber error lost: %v", err)
+	}
+}
+
+// TestRecordTurnCancelsTheRecorderOnEnter pins the stop: the Enter must end the
+// capture, not wait for the duration cap.
+func TestRecordTurnCancelsTheRecorderOnEnter(t *testing.T) {
+	rec := &fakeRecorder{pcm: loudPCM()}
+	var out strings.Builder
+	done := make(chan error, 1)
+	go func() {
+		done <- recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, &fakeTranscriber{text: "hola"}, "en", time.Hour, &out, func(string) {})
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("an Enter must stop the recording, not wait an hour")
+	}
+}
+
+// TestVoiceInput pins the three startup shapes: off, enabled without a key and
+// enabled for real.
+func TestVoiceInput(t *testing.T) {
+	if rec, tr, warn := voiceInput(config.Config{STT: "off"}); rec != nil || tr != nil || warn != "" {
+		t.Errorf("off: %v %v %q", rec, tr, warn)
+	}
+	if rec, tr, warn := voiceInput(config.Config{STT: "groq", STTKeyEnv: "GROQ_API_KEY"}); rec != nil || tr != nil || !strings.Contains(warn, "GROQ_API_KEY") {
+		t.Errorf("no key: %v %v %q", rec, tr, warn)
+	}
+	rec, tr, warn := voiceInput(config.Config{STT: "groq", STTKey: "k", STTModel: "m", STTDevice: ":1"})
+	if rec == nil || tr == nil || warn != "" {
+		t.Errorf("enabled: %v %v %q", rec, tr, warn)
 	}
 }
