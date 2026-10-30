@@ -381,7 +381,7 @@ func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Con
 	switch fields[0] {
 	case "/help":
 		fmt.Println(`/reset        empezar una conversación nueva (mantiene tu perfil)
-/level B1     cambiar tu nivel (A2, B1, B2, C1)
+/level B1     cambiar tu nivel (A1 a C2)
 /topic X      añadir un tema de interés
 /forget clave olvidar un dato que el tutor guardó (ej: /forget city)
 /status       modelo, memoria usada y estado de la conversación
@@ -391,12 +391,11 @@ func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Con
 		fmt.Println("conversación reiniciada")
 	case "/level":
 		lvl := strings.ToUpper(arg)
-		switch lvl {
-		case "A2", "B1", "B2", "C1":
+		if _, ok := conv.LevelOf(lvl); ok {
 			_ = store.Update(func(d *conv.Data) { d.Profile.Level = lvl })
 			fmt.Println("nivel:", lvl)
-		default:
-			fmt.Println("usa A2, B1, B2 o C1")
+		} else {
+			fmt.Println("usa A1, A2, B1, B2, C1 o C2")
 		}
 	case "/topic":
 		if arg == "" {
@@ -446,7 +445,11 @@ func status(ctx context.Context, cl *ollama.Client, cfg config.Config, store *co
 		}
 	}
 	d := store.View()
-	fmt.Printf("conversación: %d turnos, resumen de %d palabras, nivel %s\n", len(d.Turns), len(strings.Fields(d.Summary)), d.Profile.Level)
+	nivel := d.Profile.Level
+	if p, ok := conv.LevelOf(nivel); ok {
+		nivel += " (" + p.Name + ")"
+	}
+	fmt.Printf("conversación: %d turnos, resumen de %d palabras, nivel %s\n", len(d.Turns), len(strings.Fields(d.Summary)), nivel)
 	// The three categories below are exactly the ones the next system prompt
 	// will carry, so this line is the reason the tutor behaves differently.
 	if top := d.TopMistakes(3); len(top) > 0 {

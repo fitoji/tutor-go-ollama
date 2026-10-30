@@ -135,13 +135,37 @@ lo que sabe de vos: city=Madrid · country=Argentina · hobby=cooking · name=Fi
 - Límites: 40 datos, clave de hasta 40 caracteres, valor de hasta 200. Los datos salen solo de lo que escribís: si el modelo devuelve un placeholder o algo que no está en tu mensaje, se descarta.
 - Los datos se extraen en la **pasada de revisión** (la misma que corrige), con salida JSON. `--corrections=false` oculta los `✎` pero la pasada sigue corriendo: es la que guarda los datos.
 
+## Niveles
+
+`/level` acepta la escala completa (A1, A2, B1, B2, C1, C2) y el nivel se guarda en tu perfil: es tuyo, no de la máquina. Arranca en B1 y `/reset` no lo toca.
+
+Una letra sola no le dice nada al modelo, así que el system prompt lleva el perfil de ese nivel: vocabulario objetivo, qué puede hacer, qué gramática ya controla y de qué temas conviene hablar.
+
+| Nivel | Vocabulario | Ejemplo de lo que ya controla |
+|---|---|---|
+| A1 | 500-1000 | presente simple, artículos, `can` |
+| A2 | 1000-2000 | pasado simple, `going to`, comparativos |
+| B1 | 2000-3000 | presente perfecto, condicionales 1 y 2, pasiva básica |
+| B2 | 3000-4000 | condicional 3 y mixtos, pasiva completa, modales de deducción |
+| C1 | 4000-8000 | inversión, cleft sentences, subjuntivo tras `wish` |
+| C2 | 8000+ | todo el rango, con control de estilo y registro |
+
+La diferencia se nota. Con el mismo mensaje (*"I would like to talk about the impact of technology on society"*):
+
+- **A1** → "That is a big topic, Fito! Since you like cooking, do you use many new kitchen tools? How does your phone help you every day?"
+- **C1** → "Some argue that while efficiency has soared, the erosion of face-to-face interaction is a serious concern we must address."
+
+**Las correcciones también respetan el nivel.** La pasada de revisión recibe tu nivel y lo juzga contra lo que se espera de él: no marca una frase simple pero correcta, y no te empuja estructuras por encima. Un error de un nivel superior solo aparece si hace difícil entender la frase.
+
+Límites: es una guía, no una medición. La app no detecta tu nivel ni te promociona sola; lo cambiás vos con `/level`. Si el nivel guardado no está en la tabla (un perfil viejo), el prompt usa solo la letra y nada más.
+
 ## Correcciones y perfil del alumno
 
 Cada mensaje tuyo son **dos peticiones**, con papeles separados:
 
 | | Tutor | Correcciones |
 |---|---|---|
-| Qué recibe | reglas + perfil + resumen + últimos turnos | solo tu mensaje |
+| Qué recibe | reglas + perfil + nivel + resumen + últimos turnos | solo tu mensaje y tu nivel |
 | Temperatura | 0.7 | 0 |
 | Salida | texto libre en streaming | JSON con schema |
 | Cuándo | primero | después, mientras suena el audio |

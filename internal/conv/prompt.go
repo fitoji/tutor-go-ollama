@@ -32,6 +32,11 @@ func System(d Data) string {
 	var sb strings.Builder
 	sb.WriteString(tutorPrompt)
 	fmt.Fprintf(&sb, "\n\nLearner level: %s.", d.Profile.Level)
+	// The letter alone says nothing: carry what that level means so a small
+	// model aims at the right vocabulary, grammar and subjects.
+	if p, ok := LevelOf(d.Profile.Level); ok {
+		sb.WriteString(p.Block())
+	}
 	if len(d.Profile.Topics) > 0 {
 		fmt.Fprintf(&sb, "\nLearner interests: %s.", strings.Join(d.Profile.Topics, ", "))
 	}

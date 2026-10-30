@@ -489,3 +489,42 @@ func TestFoldSurvivesResetDuringSummary(t *testing.T) {
 	}
 	_ = tut
 }
+
+// TestCorrectionPromptCarriesTheLevel pins the second half of the level work:
+// a B1 learner must not be corrected with C1 expectations.
+func TestCorrectionPromptCarriesTheLevel(t *testing.T) {
+	f := &fakeOllama{json: `{"corrections":[],"facts":[]}`}
+	tut, store := setup(t, f, 8192)
+	store.Update(func(d *conv.Data) { d.Profile.Level = "C1" })
+
+	if _, _, err := tut.Correct(context.Background(), "I have went to the cinema yesterday"); err != nil {
+		t.Fatal(err)
+	}
+	reqs := f.requests()
+	if len(reqs) != 1 {
+		t.Fatalf("requests = %d", len(reqs))
+	}
+	msgs := reqs[0]["messages"].([]any)
+	sys, _ := msgs[0].(map[string]any)["content"].(string)
+	if !strings.Contains(sys, "CEFR level C1") {
+		t.Errorf("the review prompt must name the level:\n%s", sys)
+	}
+	if !strings.Contains(sys, "above their level") {
+		t.Errorf("the review prompt must bound what is flagged:\n%s", sys)
+	}
+}
+
+// TestCorrectionProbeDefaultsToB1 keeps --selftest working without a store.
+func TestCorrectionProbeDefaultsToB1(t *testing.T) {
+	f := &fakeOllama{json: `{"corrections":[],"facts":[]}`}
+	srv := httptest.NewServer(http.HandlerFunc(f.handler))
+	defer srv.Close()
+	if _, err := ProbeCorrections(context.Background(), ollama.Chatter{C: ollama.New(srv.URL)}, Settings{Model: "m", NumCtx: 8192}); err != nil {
+		t.Fatal(err)
+	}
+	msgs := f.requests()[0]["messages"].([]any)
+	sys, _ := msgs[0].(map[string]any)["content"].(string)
+	if !strings.Contains(sys, "CEFR level B1") {
+		t.Errorf("a probe without a profile must use B1:\n%s", sys)
+	}
+}

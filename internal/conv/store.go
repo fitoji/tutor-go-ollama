@@ -258,6 +258,17 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
+// Level returns the learner's level without copying the whole state. A missing
+// level reads as B1, the same default Open applies.
+func (s *Store) Level() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.d.Profile.Level == "" {
+		return "B1"
+	}
+	return s.d.Profile.Level
+}
+
 // View returns a deep copy that is safe to use without holding the lock.
 func (s *Store) View() Data {
 	s.mu.Lock()

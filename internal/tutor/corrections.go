@@ -21,8 +21,10 @@ const maxCorrections = 3
 
 // The prompt spells out the JSON shape because OpenAI-compatible providers
 // only offer JSON mode (no schema), and JSON mode requires the word "JSON".
-const correctionPrompt = `You are an English teacher reviewing ONE message written by a learner.
+const correctionPrompt = `You are an English teacher reviewing ONE message written by a learner at CEFR level %s.
 List only real mistakes: grammar, wrong word choice, or phrasing a native speaker would not use.
+Judge it against what a %s learner is expected to control: do not flag a simple but correct phrase, and do not push structures above their level.
+If a mistake belongs to a higher level, list it only when it makes the sentence hard to understand.
 Ignore capitalization, punctuation and obvious typos. If the message is fine, return an empty list.
 For each mistake give "original" (the exact wrong fragment), "better" (the corrected fragment), "category" (two or three lowercase English words, e.g. "past simple", "articles", "word order") and "note" (at most 12 words, written in %s).
 Also list the durable facts the learner states about themselves, each as "key" and "value".
@@ -124,8 +126,14 @@ func (t *Tutor) Correct(ctx context.Context, text string) ([]Correction, []Fact,
 // correctionRequest builds the request Correct sends. ProbeCorrections reuses
 // it so that --selftest probes exactly what production sends.
 func (t *Tutor) correctionRequest(text string) llm.Request {
+	// The level is per learner and lives in the store; a probe without one
+	// (--selftest) uses the same default the app applies to a new profile.
+	level := "B1"
+	if t.store != nil {
+		level = t.store.Level()
+	}
 	msgs := []llm.Message{
-		{Role: "system", Content: fmt.Sprintf(correctionPrompt, t.st.NotesLang)},
+		{Role: "system", Content: fmt.Sprintf(correctionPrompt, level, level, t.st.NotesLang)},
 		{Role: "user", Content: "Learner message: " + text},
 	}
 	req := t.request(msgs, 0, 300)

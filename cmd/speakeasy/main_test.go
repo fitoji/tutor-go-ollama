@@ -273,7 +273,9 @@ func TestCommandLevel(t *testing.T) {
 	}{
 		{"b2", "B2", "nivel: B2"},
 		{" C1 ", "C1", "nivel: C1"},
-		{"Z9", "B1", "usa A2, B1, B2 o C1"},
+		{"a1", "A1", "nivel: A1"},
+		{"c2", "C2", "nivel: C2"},
+		{"Z9", "B1", "usa A1, A2, B1, B2, C1 o C2"},
 	}
 	for _, c := range cases {
 		store := newStore(t)
