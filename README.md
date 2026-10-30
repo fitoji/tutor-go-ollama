@@ -50,6 +50,14 @@ Otras opciones (flag o variable): `--tts` / `SPEAKEASY_TTS`, `--voice`, `--num-c
 
 Hace las mismas peticiones que la app en un turno real —versión de Ollama, modelo de voz presente, síntesis que devuelva PCM, un chat de una línea y una corrección en JSON— e imprime una línea por comprobación. Sale con código 1 si algo falla, así que sirve en un script. No toca tu conversación guardada ni descarga modelos de Ollama.
 
+```
+[ok]    ollama:       0.40.13 at http://127.0.0.1:11434
+[ok]    voice:        phonon:latest is pulled
+[ok]    speech:       2.8 s of PCM (134400 bytes)
+[ok]    chat:         "ready" (19 prompt tokens)
+[ok]    corrections:  1 corrections, first "Yesterday I go" -> "Yesterday I went" (past simple tense)
+```
+
 La comprobación de correcciones manda una frase con un error obvio (*"Yesterday I go to the cinema with my friend"*); si el modelo no devuelve ninguna corrección, cuenta como fallo: el formato JSON se está ignorando y la función no sirve en la práctica.
 
 ## Cómo se cuida la memoria
@@ -83,6 +91,36 @@ OLLAMA_MAX_LOADED_MODELS=2 OLLAMA_NUM_PARALLEL=1 ollama serve
 # OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0   (KV cache a la mitad)
 ```
 
+## Correcciones y perfil del alumno
+
+Cada mensaje tuyo son **dos peticiones**, con papeles separados:
+
+| | Tutor | Correcciones |
+|---|---|---|
+| Qué recibe | reglas + perfil + resumen + últimos turnos | solo tu mensaje |
+| Temperatura | 0.7 | 0 |
+| Salida | texto libre en streaming | JSON con schema |
+| Cuándo | primero | después, mientras suena el audio |
+
+El tutor **nunca corrige en voz alta**: el system prompt le pide que use la forma correcta como si nada. Lo explícito sale por los `✎`, que son la segunda petición.
+
+Cada corrección trae una `category` ("past simple", "articles"...). Esas categorías se acumulan en el perfil, y las **tres más frecuentes** entran al system prompt de cada turno como *recurring trouble spots*. Por eso, si repetís el mismo error tres o cuatro veces, el tutor empieza a usar esa estructura por su cuenta y a hacer preguntas que te fuerzan a practicarla.
+
+`/status` muestra exactamente esas tres, con su contador:
+
+```
+errores recurrentes: past simple ×4 · articles ×2
+```
+
+Límites que conviene saber:
+
+- Un error aislado no cambia nada: entran solo las tres categorías más frecuentes.
+- La categoría la inventa el modelo, no hay taxonomía fija: "past simple" y "past simple tense" cuentan por separado, así que el contador se diluye. Con modelos chicos pasa más.
+- La pasada de correcciones no ve la conversación, solo tu mensaje: una respuesta elíptica correcta ("So do I") puede marcarse como error.
+- `/reset` borra la conversación pero **no** el perfil: los trouble spots sobreviven. Para borrarlos hay que eliminar el archivo de estado.
+
+El parser tolera las formas en que los modelos rompen el contrato: una lista desnuda en vez del objeto, `[]` cuando no hay nada que corregir, y comillas dobles sin escapar dentro de un valor —esta última era la que producía `could not read corrections`—. Todo cubierto con tests.
+
 ## Límites del plan gratuito
 
 Cada turno son dos peticiones (respuesta y corrección) y de vez en cuando una tercera (resumen). Si Groq responde 429, la app espera una vez si el `Retry-After` es corto (≤15 s) y, si no, te dice cuánto esperar. Los límites cambian: confírmalos en la consola de Groq.
@@ -109,9 +147,8 @@ Push-to-talk (mantener una tecla, grabar, transcribir, enviar), sin VAD ni inter
 
 ## Sin verificar
 
-Se probó con servidores simulados (Ollama y compatible con OpenAI) en Linux. **No se ha probado con Groq, xAI, Ollama ni Phonon reales, ni el audio por `afplay` en macOS.** Corré `./speakeasy --selftest` antes de la primera sesión: comprueba contra los servicios reales todo lo de esta lista salvo el audio. Puntos a confirmar:
+Se desarrolló con servidores simulados (Ollama y compatible con OpenAI). **Verificado en macOS arm64 con Ollama 0.40.13 y phonon**: `--selftest` pasa las cinco comprobaciones contra los servicios reales y una sesión con voz funciona. Queda sin probar contra Groq y contra xAI/custom. Puntos a confirmar:
 
 - Que Groq acepta `max_tokens`, el modo JSON (`response_format: json_object`) con tu modelo y el streaming tal como lo implementa el cliente (el uso de tokens se lee de `usage` o `x_groq.usage`; si no llega, `/status` lo indica).
-- Que el modelo elegido cumple el formato JSON de las correcciones; si no, verás `[correcciones] could not read corrections`.
-- Que `/v1/audio/speech` de Ollama devuelve PCM como documenta, y (solo `--provider ollama`) que `qwen3:8b` acepta `think: false`.
-- xAI y `custom` comparten el mismo cliente, pero no se han probado contra esas APIs.
+- Que el modelo elegido cumple el formato JSON de las correcciones. Ya no rompe la sesión: el parser acepta lista desnuda, `[]` y comillas sin escapar, pero un modelo que no corrija nada útil igual te deja sin `✎`.
+- xAI y `custom` comparten el mismo cliente que Groq, pero no se han probado contra esas APIs.
