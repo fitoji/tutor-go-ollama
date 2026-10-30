@@ -265,6 +265,81 @@ func TestCorrect(t *testing.T) {
 	}
 }
 
+// TestCorrectAcceptsABareList covers models that answer with the list itself
+// instead of the documented object. qwen3.5:9b returns a bare `[]` when it
+// finds nothing, and the old parser failed with a cryptic unmarshal error.
+func TestCorrectAcceptsABareList(t *testing.T) {
+	cases := []struct {
+		name, json string
+		notes      int
+		want       int
+	}{
+		{"empty list", `[]`, 0, 0},
+		{"list of corrections", `[{"original":"I go yesterday","better":"I went yesterday","category":"past simple","note":"Usa pasado."}]`, 1, 1},
+		{"list wrapped in prose", "Sure:\n[{\"original\":\"I am agree\",\"better\":\"I agree\",\"category\":\"verb form\",\"note\":\"Sin 'am'.\"}]\nHope this helps.", 1, 1},
+	}
+	for _, c := range cases {
+		f := &fakeOllama{json: c.json}
+		tut, store := setup(t, f, 8192)
+		got, err := tut.Correct(context.Background(), "I go yesterday to the beach")
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if len(got) != c.want {
+			t.Errorf("%s: got %d corrections, want %d", c.name, len(got), c.want)
+		}
+		if n := len(store.View().Profile.Mistakes); n != c.notes {
+			t.Errorf("%s: recorded %d mistake categories, want %d", c.name, n, c.notes)
+		}
+	}
+}
+
+// TestCorrectRecoversFromUnescapedQuotes reproduces the reported error: a
+// model that writes "note":"Usa "otra" forma" produces invalid JSON, and the
+// parser saw 'o' where it expected a ','. The correction must still arrive.
+func TestCorrectRecoversFromUnescapedQuotes(t *testing.T) {
+	f := &fakeOllama{json: `{"corrections":[{"original":"I go","better":"I went","category":"past simple","note":"Usa "otra" forma, no "go"."}]}`}
+	tut, store := setup(t, f, 8192)
+
+	got, err := tut.Correct(context.Background(), "I go to the cinema yesterday")
+	if err != nil {
+		t.Fatalf("a recoverable answer must not fail: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d corrections, want 1: %+v", len(got), got)
+	}
+	if got[0].Original != "I go" || got[0].Better != "I went" || got[0].Category != "past simple" {
+		t.Errorf("fields mangled: %+v", got[0])
+	}
+	if !strings.Contains(got[0].Note, `"otra"`) {
+		t.Errorf("the note lost its quoted words: %q", got[0].Note)
+	}
+	if n := store.View().Profile.Mistakes["past simple"]; n != 1 {
+		t.Errorf("the category must still be recorded, got %d", n)
+	}
+}
+
+// TestCorrectRecoversSeveralBrokenEntries keeps the salvage pass honest when
+// only some of the entries are malformed.
+func TestCorrectRecoversSeveralBrokenEntries(t *testing.T) {
+	f := &fakeOllama{json: `{"corrections":[
+		{"original":"I go","better":"I went","category":"past simple","note":"Usa "otra" forma."},
+		{"original":"a office","better":"an office","category":"articles","note":"Antes de vocal."}]}`}
+	tut, _ := setup(t, f, 8192)
+
+	got, err := tut.Correct(context.Background(), "I go to a office yesterday")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d corrections, want 2: %+v", len(got), got)
+	}
+	if got[1].Original != "a office" || got[1].Better != "an office" {
+		t.Errorf("second entry mangled: %+v", got[1])
+	}
+}
+
 func TestCorrectSkipsSingleWordsAndHandlesBadJSON(t *testing.T) {
 	f := &fakeOllama{json: `not json`}
 	tut, _ := setup(t, f, 8192)

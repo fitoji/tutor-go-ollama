@@ -169,6 +169,8 @@ func TestExtractJSON(t *testing.T) {
 		`{"a":1}`:                           `{"a":1}`,
 		"```json\n{\"a\":1}\n```":           `{"a":1}`,
 		`Sure! {"a":{"b":2}} Hope it helps`: `{"a":{"b":2}}`,
+		`[]`:                                `[]`,
+		`Sure: [{"a":1}] ok`:                `[{"a":1}]`,
 		`no json here`:                      `no json here`,
 	}
 	for in, want := range cases {
