@@ -17,6 +17,8 @@ go build -o speakeasy ./cmd/speakeasy
 
 Escribes en inglés (o en español; el tutor siempre responde en inglés). Mientras suena la respuesta se calculan las correcciones de tu mensaje. Si escribes otra cosa mientras habla, se interrumpe. `Ctrl-C` corta el turno; en el prompt, sale.
 
+Al arrancar te pregunta quién sos (`usuario:`); con Enter mantiene el último. Cada nombre guarda su propio nivel y sus propios errores, así que dos personas pueden compartir la máquina sin pisarse el perfil (ver [Un perfil por persona](#un-perfil-por-persona)).
+
 Comandos: `/reset`, `/level B2`, `/topic cine`, `/status`, `/quit`.
 
 ## Proveedores
@@ -39,7 +41,7 @@ Ejemplos:
 
 Con un proveedor remoto **tus mensajes salen a un servidor externo** (la app lo recuerda al arrancar). Usa modelos sin razonamiento largo: los que «piensan» gastan el límite de tokens antes de contestar. Si el modelo emite bloques `<think>...</think>`, se descartan.
 
-Otras opciones (flag o variable): `--tts` / `SPEAKEASY_TTS`, `--voice`, `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false`, `--state`, `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo).
+Otras opciones (flag o variable): `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice`, `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false`, `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo).
 
 ### Antes de la primera sesión: `--selftest`
 
@@ -69,7 +71,7 @@ Lo que mató a LinguaLoop fue perder contexto y cargar varios modelos a la vez. 
 - **Ollama: `num_ctx` fijo e idéntico en todas las peticiones.** Si cambia entre peticiones, Ollama recarga el modelo; y si no se indica, el valor por defecto es pequeño y trunca en silencio el principio del prompt (el system prompt incluido).
 - **La app es dueña de la memoria, no el modelo.** Cada petición se reconstruye: reglas del tutor + perfil (nivel, temas, errores recurrentes) + resumen rodante + últimos turnos que quepan en el presupuesto (`--num-ctx`). Cuando los turnos guardados pasan del 45 % del presupuesto, los más antiguos se resumen en segundo plano (≤120 palabras). La estimación de tokens es pesimista (3 caracteres por token). En remoto el presupuesto es de 4096 para que cada petición sea pequeña y quepa en los límites por minuto del plan gratuito.
 - **Audio con memoria acotada:** como mucho ~3 clips existen a la vez (sonando, en espera, sintetizándose). Si el reproductor se atasca, el flujo del LLM se frena en vez de acumular.
-- **Estado:** un JSON pequeño con escritura atómica, máximo 200 turnos, 30 categorías de error, 5 temas.
+- **Estado:** un JSON pequeño **por alumno** (ver abajo), con escritura atómica, máximo 200 turnos, 30 categorías de error, 5 temas.
 - **Este proceso:** ~10 MB de RSS medido contra servidores simulados; `debug.SetMemoryLimit` configurable.
 
 ### Presupuesto estimado (no medido) en 16 GB con Ollama local
@@ -89,6 +91,32 @@ Con Groq te ahorras los ~6 GB del LLM. `/status` muestra lo que Ollama tiene car
 OLLAMA_MAX_LOADED_MODELS=2 OLLAMA_NUM_PARALLEL=1 ollama serve
 # opcionales, comprueba que tu versión los soporta:
 # OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0   (KV cache a la mitad)
+```
+
+## Un perfil por persona
+
+El nivel y los errores recurrentes son de quien practica, no de la máquina. Al arrancar la app pregunta el nombre (sin contraseña, sin cuentas) y con eso elige el archivo de estado:
+
+```
+~/.speakeasy/
+├── state.json                 # perfil viejo, compartido (solo se lee una vez)
+├── last-user                  # el último nombre usado, para ofrecerlo con Enter
+└── users/
+    ├── ana/state.json         # nivel, temas, errores, resumen y turnos de Ana
+    └── beto/state.json
+```
+
+- **`--user Ana`** (o `SPEAKEASY_USER=Ana`) se salta la pregunta: sirve para scripts y para atajos en el shell.
+- **Sin terminal** (stdin por caño, `< /dev/null`, o fd 0 cerrado) no pregunta nada: usa el último nombre, o `default` si no hay ninguno. Nunca se queda esperando ni ensucia la primera línea de la salida.
+- **El nombre se normaliza** a minúsculas y guiones para el directorio: `Ana`, `ana` y ` Ana ` son la misma persona; `Ana María` va a `users/ana-mar-a/`.
+- **`--state <archivo>`** sigue significando *ese archivo exacto*, sin separar por usuario y sin escribir un `last-user` al lado. Útil para probar con un perfil descartable.
+- **Migración:** la primera vez, si existe el `state.json` viejo y todavía no hay ningún alumno, se **copia** (no se mueve) al primer perfil que arranque. Un segundo nombre nunca hereda ese perfil: arranca limpio.
+- `/status` muestra el nombre y el archivo en uso, que es la forma rápida de comprobar que no estás pisando el perfil de otro:
+
+```
+usuario: Ana · /Users/vos/.speakeasy/users/ana/state.json
+chat: groq · llama-3.3-70b-versatile
+conversación: 12 turnos, resumen de 87 palabras, nivel B2
 ```
 
 ## Correcciones y perfil del alumno
@@ -130,6 +158,7 @@ Cada turno son dos peticiones (respuesta y corrección) y de vez en cuando una t
 ```
 cmd/speakeasy/       CLI: arranque, comandos, bucle
 internal/config/     flags, entorno y proveedores
+internal/learner/    quién practica y dónde vive su estado (un archivo por nombre)
 internal/llm/        interfaz neutral de chat (Request, Stats, Chatter)
 internal/openai/     cliente de chat/completions con SSE (Groq, xAI, ...)
 internal/ollama/     cliente de Ollama: chat, voz, ps/unload/load

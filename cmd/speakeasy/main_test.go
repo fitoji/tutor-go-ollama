@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"io"
@@ -14,6 +15,7 @@ import (
 
 	"speakeasy/internal/config"
 	"speakeasy/internal/conv"
+	"speakeasy/internal/learner"
 	"speakeasy/internal/ollama"
 	"speakeasy/internal/openai"
 	"speakeasy/internal/speech"
@@ -405,6 +407,210 @@ func TestStatusAsksOllamaWhatIsLoaded(t *testing.T) {
 	})
 	if !strings.Contains(out, "llama3:8b") || !strings.Contains(out, "5.0 GiB") {
 		t.Errorf("status should report the loaded models:\n%s", out)
+	}
+}
+
+// TestPickLearnerAsksOnTheTerminalAndGivesEachNameItsOwnFile pins the feature:
+// at startup the app asks who is practising and the answer selects the state
+// file, so two people never share corrections.
+func TestPickLearnerAsksOnTheTerminalAndGivesEachNameItsOwnFile(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "state.json")
+	cfg := config.Config{StatePath: base}
+
+	var out strings.Builder
+	name, path, err := pickLearner(cfg, bufio.NewScanner(strings.NewReader("Ana\n")), &out, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "Ana" {
+		t.Errorf("name = %q, want Ana", name)
+	}
+	want := filepath.Join(filepath.Dir(base), "users", "ana", "state.json")
+	if path != want {
+		t.Errorf("state path = %q, want %q", path, want)
+	}
+	if !strings.Contains(out.String(), "usuario:") {
+		t.Errorf("the app should ask for the user, output %q", out.String())
+	}
+}
+
+// TestPickLearnerWithTheUserFlagSkipsThePrompt keeps scripts and tests able to
+// start a known profile without a terminal.
+func TestPickLearnerWithTheUserFlagSkipsThePrompt(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "state.json")
+	cfg := config.Config{StatePath: base, User: "Beto"}
+
+	var out strings.Builder
+	name, path, err := pickLearner(cfg, bufio.NewScanner(strings.NewReader("Ana\n")), &out, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "Beto" || out.Len() != 0 {
+		t.Errorf("name=%q prompt=%q, want Beto and no prompt", name, out.String())
+	}
+	if want := filepath.Join(filepath.Dir(base), "users", "beto", "state.json"); path != want {
+		t.Errorf("state path = %q, want %q", path, want)
+	}
+}
+
+// TestPickLearnerHonoursAnExplicitStateFile keeps --state meaning exactly the
+// file it names, without a per-user directory.
+func TestPickLearnerHonoursAnExplicitStateFile(t *testing.T) {
+	explicit := filepath.Join(t.TempDir(), "mine.json")
+	cfg := config.Config{StatePath: explicit, StateSet: true, User: "ana"}
+
+	_, path, err := pickLearner(cfg, bufio.NewScanner(strings.NewReader("")), io.Discard, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != explicit {
+		t.Errorf("state path = %q, want the explicit %q", path, explicit)
+	}
+}
+
+// TestPickLearnerReusesTheLastNameWithoutATerminal covers the non-interactive
+// case: piped input must not hang or invent a new profile.
+func TestPickLearnerReusesTheLastNameWithoutATerminal(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "state.json")
+	if err := learner.Remember(base, "Ana"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{StatePath: base}
+
+	var out strings.Builder
+	name, _, err := pickLearner(cfg, bufio.NewScanner(strings.NewReader("")), &out, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "Ana" {
+		t.Errorf("name = %q, want the last one", name)
+	}
+	if out.Len() != 0 {
+		t.Errorf("no prompt without a terminal, output %q", out.String())
+	}
+}
+
+// TestPickLearnerImportsTheOldSingleProfileOnce is the upgrade path: the first
+// learner inherits the profile that used to live in one shared file, and the
+// second one starts clean.
+func TestPickLearnerImportsTheOldSingleProfileOnce(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "state.json")
+	if err := os.WriteFile(base, []byte(`{"profile":{"level":"C1"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	_, path, err := pickLearner(config.Config{StatePath: base, User: "Ana"}, bufio.NewScanner(strings.NewReader("")), &out, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "importado") {
+		t.Errorf("the import should be announced, output %q", out.String())
+	}
+	b, err := os.ReadFile(path)
+	if err != nil || !strings.Contains(string(b), "C1") {
+		t.Errorf("imported profile = %q, err %v", b, err)
+	}
+
+	_, beto, err := pickLearner(config.Config{StatePath: base, User: "Beto"}, bufio.NewScanner(strings.NewReader("")), io.Discard, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(beto); !os.IsNotExist(err) {
+		t.Errorf("a second learner must start clean, stat err %v", err)
+	}
+}
+
+func TestStatusNamesTheLearnerAndTheirFile(t *testing.T) {
+	store := newStore(t)
+	tut := tutor.New(nil, store, tutor.Settings{})
+	cfg := statusConfig()
+	cfg.User = "ana"
+	cfg.StatePath = "/home/u/.speakeasy/users/ana/state.json"
+
+	out, _ := capture(t, func() {
+		status(context.Background(), ollama.New("http://127.0.0.1:1"), cfg, store, tut)
+	})
+	for _, want := range []string{"usuario: ana", "/users/ana/state.json"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("status should mention %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestIsTerminalIsFalseOnAPipe guards the branch that decides whether to ask:
+// piped input must never block waiting for a name.
+func TestIsTerminalIsFalseOnAPipe(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	if isTerminal(r) {
+		t.Error("a pipe is not a terminal")
+	}
+}
+
+// TestIsTerminalIsFalseOnDevNull pins S3 for the common non-interactive
+// redirect: /dev/null is a character device, so a mode check alone treats it as
+// a terminal and the app prints a prompt nobody can answer.
+func TestIsTerminalIsFalseOnDevNull(t *testing.T) {
+	f, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if isTerminal(f) {
+		t.Errorf("isTerminal(%s) = true; a non-interactive stdin must never prompt", os.DevNull)
+	}
+}
+
+// TestPickLearnerWithoutATerminalDoesNotConsumeStdin guards the piped case: the
+// line waiting in the buffer belongs to the turn loop, not to a name prompt.
+func TestPickLearnerWithoutATerminalDoesNotConsumeStdin(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "state.json")
+	sc := bufio.NewScanner(strings.NewReader("Ana\n/quit\n"))
+	var out strings.Builder
+	name, _, err := pickLearner(config.Config{StatePath: base}, sc, &out, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != learner.DefaultName {
+		t.Errorf("name = %q, want %q (piped input is not a name)", name, learner.DefaultName)
+	}
+	if out.Len() != 0 {
+		t.Errorf("prompt leaked to stdout: %q", out.String())
+	}
+	if !sc.Scan() || sc.Text() != "Ana" {
+		t.Error("the name prompt consumed a piped line meant for the turn loop")
+	}
+}
+
+// TestPickLearnerWithExplicitStateLeavesNoUsersDir keeps --state honest: it
+// names one file and nothing else is created next to it.
+func TestPickLearnerWithExplicitStateLeavesNoUsersDir(t *testing.T) {
+	dir := t.TempDir()
+	explicit := filepath.Join(dir, "mine.json")
+	if err := os.WriteFile(explicit, []byte(`{"profile":{"level":"C1"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{StatePath: explicit, StateSet: true, User: "Ana"}
+	name, path, err := pickLearner(cfg, bufio.NewScanner(strings.NewReader("")), io.Discard, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "Ana" || path != explicit {
+		t.Errorf("name=%q path=%q, want Ana and the explicit %q", name, path, explicit)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "users")); !os.IsNotExist(err) {
+		t.Errorf("--state must not create a per-learner directory: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "last-user")); !os.IsNotExist(err) {
+		t.Errorf("--state must not write a last-user file beside it: %v", err)
+	}
+	if b, err := os.ReadFile(explicit); err != nil || !strings.Contains(string(b), "C1") {
+		t.Errorf("explicit state file = %q, err %v", b, err)
 	}
 }
 

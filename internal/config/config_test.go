@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -11,7 +12,7 @@ func clean(t *testing.T) {
 	for _, k := range []string{
 		"SPEAKEASY_PROVIDER", "SPEAKEASY_LLM", "SPEAKEASY_API_BASE", "SPEAKEASY_API_KEY_ENV",
 		"SPEAKEASY_TTS", "SPEAKEASY_VOICE", "SPEAKEASY_NUM_CTX", "SPEAKEASY_KEEP_ALIVE", "SPEAKEASY_NOTES",
-		"OLLAMA_HOST", "GROQ_API_KEY", "XAI_API_KEY", "LLM_API_KEY", "MY_KEY",
+		"SPEAKEASY_USER", "OLLAMA_HOST", "GROQ_API_KEY", "XAI_API_KEY", "LLM_API_KEY", "MY_KEY",
 	} {
 		t.Setenv(k, "")
 	}
@@ -116,6 +117,39 @@ func TestSelfTestFlag(t *testing.T) {
 	clean(t)
 	if _, err := Parse([]string{"--selftest"}); err == nil || !strings.Contains(err.Error(), "GROQ_API_KEY") {
 		t.Errorf("a selftest without a key must explain what is missing: %v", err)
+	}
+}
+
+// TestUserAndStateFlags pins how a learner is chosen from the command line:
+// --user selects the profile without asking, and only an explicit --state
+// keeps the single-file behaviour instead of the per-learner directory.
+func TestUserAndStateFlags(t *testing.T) {
+	clean(t)
+	t.Setenv("GROQ_API_KEY", "k")
+	c, err := Parse(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.User != "" || c.StateSet {
+		t.Errorf("nothing should be preselected: user=%q stateSet=%v", c.User, c.StateSet)
+	}
+	if !strings.HasSuffix(c.StatePath, filepath.Join(".speakeasy", "state.json")) {
+		t.Errorf("default state path = %q", c.StatePath)
+	}
+
+	c, err = Parse([]string{"--user", "  Ana  "})
+	if err != nil || c.User != "Ana" || c.StateSet {
+		t.Errorf("--user: %+v %v", c, err)
+	}
+
+	c, err = Parse([]string{"--state", "/tmp/x/state.json"})
+	if err != nil || !c.StateSet || c.StatePath != "/tmp/x/state.json" {
+		t.Errorf("--state: %+v %v", c, err)
+	}
+
+	t.Setenv("SPEAKEASY_USER", "Beto")
+	if c, err := Parse(nil); err != nil || c.User != "Beto" {
+		t.Errorf("user from env: %+v %v", c, err)
 	}
 }
 

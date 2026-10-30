@@ -22,7 +22,9 @@ type Config struct {
 	Think       bool   // allow thinking mode (Ollama only)
 	Corrections bool   // run the correction pass
 	NotesLang   string // language of the short correction notes
-	StatePath   string
+	User        string // learner name (empty = ask at startup)
+	StatePath   string // state file, or the base path each learner derives from
+	StateSet    bool   // true when --state named an exact file
 	Mute        bool
 	MemLimitMiB int  // soft Go heap limit
 	SelfTest    bool // check the configured providers and exit
@@ -103,13 +105,22 @@ func Parse(args []string) (Config, error) {
 	fs.BoolVar(&c.Think, "think", false, "allow model thinking mode (ollama only)")
 	fs.BoolVar(&c.Corrections, "corrections", true, "show corrections of your messages after each turn")
 	fs.StringVar(&c.NotesLang, "notes", envOr("SPEAKEASY_NOTES", "Spanish"), "language of correction notes")
-	fs.StringVar(&c.StatePath, "state", filepath.Join(home, ".speakeasy", "state.json"), "state file")
+	fs.StringVar(&c.User, "user", envOr("SPEAKEASY_USER", ""), "learner name; each name keeps its own level and corrections (asks at startup when empty)")
+	fs.StringVar(&c.StatePath, "state", filepath.Join(home, ".speakeasy", "state.json"), "state file; without this flag each learner gets a directory next to it")
 	fs.BoolVar(&c.Mute, "mute", false, "text only, no voice")
 	fs.IntVar(&c.MemLimitMiB, "mem-limit", 256, "soft memory limit for this process, in MiB")
 	fs.BoolVar(&c.SelfTest, "selftest", false, "check the configured chat, corrections and voice, then exit")
 	if err := fs.Parse(args); err != nil {
 		return c, err
 	}
+	// Only an explicit --state keeps the single-file behaviour; the default
+	// path is a base that each learner derives their own directory from.
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "state" {
+			c.StateSet = true
+		}
+	})
+	c.User = strings.TrimSpace(c.User)
 
 	c.Provider = strings.ToLower(strings.TrimSpace(c.Provider))
 	p, ok := presets[c.Provider]

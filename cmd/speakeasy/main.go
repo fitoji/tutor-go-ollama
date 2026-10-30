@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/signal"
@@ -18,6 +19,7 @@ import (
 
 	"speakeasy/internal/config"
 	"speakeasy/internal/conv"
+	"speakeasy/internal/learner"
 	"speakeasy/internal/llm"
 	"speakeasy/internal/ollama"
 	"speakeasy/internal/openai"
@@ -62,6 +64,19 @@ func run() error {
 			Settings: settingsFor(cfg),
 		})
 	}
+
+	// One scanner for the whole session: the name prompt and the turn loop must
+	// not lose buffered input by reading stdin twice.
+	sc := bufio.NewScanner(os.Stdin)
+	sc.Buffer(make([]byte, 64<<10), 1<<20)
+
+	// Who is practising decides which state file we open, so this runs before
+	// the slow part (loading the model).
+	name, statePath, err := pickLearner(cfg, sc, os.Stdout, isTerminal(os.Stdin))
+	if err != nil {
+		return err
+	}
+	cfg.User, cfg.StatePath = name, statePath
 
 	if err := prepare(ctx, cl, cfg); err != nil {
 		return err
@@ -115,7 +130,7 @@ func run() error {
 		}
 	}()
 
-	fmt.Printf("speakeasy · %s: %s · voz=%s · ctx=%d · /help para ver comandos\n", cfg.Provider, cfg.LLM, ttsLabel(cfg, spk), cfg.NumCtx)
+	fmt.Printf("speakeasy · %s · %s: %s · voz=%s · ctx=%d · /help para ver comandos\n", cfg.User, cfg.Provider, cfg.LLM, ttsLabel(cfg, spk), cfg.NumCtx)
 	if cfg.Remote() {
 		fmt.Printf("aviso: tus mensajes se envían a %s\n", hostOf(cfg.APIBase))
 	}
@@ -168,8 +183,6 @@ func run() error {
 		tut.FoldAsync(ctx, func(err error) { fmt.Fprintln(os.Stderr, "\n[memoria]", err) })
 	}
 
-	sc := bufio.NewScanner(os.Stdin)
-	sc.Buffer(make([]byte, 64<<10), 1<<20)
 	for {
 		fmt.Print("\ntú> ")
 		if !sc.Scan() {
@@ -190,6 +203,66 @@ func run() error {
 	}
 	finish()
 	return nil
+}
+
+// pickLearner resolves who is practising and where their state lives. It asks
+// on the terminal unless --user was given, and keeps one state file per learner
+// so levels and corrections never mix. Without a terminal it reuses the last
+// name, so piped input never blocks waiting for an answer.
+func pickLearner(cfg config.Config, sc *bufio.Scanner, out io.Writer, interactive bool) (name, statePath string, err error) {
+	// With an explicit --state the file already names one profile: remembering
+	// a name beside it would be a side effect nobody asked for.
+	var last string
+	if !cfg.StateSet {
+		last = learner.Last(cfg.StatePath)
+	}
+	switch {
+	case cfg.User != "":
+		name = cfg.User
+	case interactive:
+		name = learner.Ask(sc, out, last)
+	default:
+		name = last
+		if name == "" {
+			name = learner.DefaultName
+		}
+	}
+	if learner.Slug(name) == "" {
+		name = learner.DefaultName
+	}
+
+	statePath = cfg.StatePath
+	if !cfg.StateSet {
+		statePath = learner.StateFile(cfg.StatePath, name)
+		copied, err := learner.ImportLegacy(cfg.StatePath, statePath)
+		if err != nil {
+			fmt.Fprintf(out, "aviso: no pude importar el perfil anterior: %v\n", err)
+		} else if copied {
+			fmt.Fprintf(out, "perfil importado desde %s\n", cfg.StatePath)
+		}
+	}
+	// Remembered best effort: failing to write it only means we ask next time.
+	if !cfg.StateSet && name != last {
+		if err := learner.Remember(cfg.StatePath, name); err != nil {
+			fmt.Fprintf(out, "aviso: no pude recordar el usuario: %v\n", err)
+		}
+	}
+	return name, statePath, nil
+}
+
+// isTerminal tells the name prompt whether there is someone to answer it. A
+// character device is not enough: `< /dev/null` and a closed stdin (which the Go
+// runtime reopens on /dev/null) are character devices too, and prompting there
+// would glue a question to the first line of output in a cron job or a pipe.
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	if null, err := os.Stat(os.DevNull); err == nil && os.SameFile(fi, null) {
+		return false
+	}
+	return true
 }
 
 // newChatter picks the client for the configured provider. run, prepare and
@@ -334,6 +407,9 @@ func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Con
 }
 
 func status(ctx context.Context, cl *ollama.Client, cfg config.Config, store *conv.Store, tut *tutor.Tutor) {
+	if cfg.User != "" {
+		fmt.Printf("usuario: %s · %s\n", cfg.User, cfg.StatePath)
+	}
 	fmt.Printf("chat: %s · %s\n", cfg.Provider, cfg.LLM)
 	if !cfg.Remote() || !cfg.Mute {
 		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
