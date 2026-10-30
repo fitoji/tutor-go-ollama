@@ -350,6 +350,17 @@ func status(ctx context.Context, cl *ollama.Client, cfg config.Config, store *co
 	}
 	d := store.View()
 	fmt.Printf("conversación: %d turnos, resumen de %d palabras, nivel %s\n", len(d.Turns), len(strings.Fields(d.Summary)), d.Profile.Level)
+	// The three categories below are exactly the ones the next system prompt
+	// will carry, so this line is the reason the tutor behaves differently.
+	if top := d.TopMistakes(3); len(top) > 0 {
+		parts := make([]string, len(top))
+		for i, k := range top {
+			parts[i] = fmt.Sprintf("%s ×%d", k, d.Profile.Mistakes[k])
+		}
+		fmt.Printf("errores recurrentes: %s\n", strings.Join(parts, " · "))
+	} else {
+		fmt.Println("errores recurrentes: todavía ninguno")
+	}
 	if n := tut.LastPromptTokens(); n > 0 {
 		fmt.Printf("último prompt: %d de %d tokens\n", n, cfg.NumCtx)
 	} else {

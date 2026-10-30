@@ -351,6 +351,47 @@ func TestStatusReportsTheConversationAndTheBudget(t *testing.T) {
 	}
 }
 
+func TestStatusShowsTheRecurringTroubleSpots(t *testing.T) {
+	store := newStore(t)
+	store.Update(func(d *conv.Data) {
+		for i := 0; i < 4; i++ {
+			d.RecordMistake("past simple")
+		}
+		for i := 0; i < 2; i++ {
+			d.RecordMistake("articles")
+		}
+		d.RecordMistake("word order")
+	})
+	tut := tutor.New(nil, store, tutor.Settings{})
+	cfg := statusConfig()
+
+	out, _ := capture(t, func() {
+		status(context.Background(), ollama.New("http://127.0.0.1:1"), cfg, store, tut)
+	})
+	for _, want := range []string{"errores recurrentes", "past simple ×4", "articles ×2", "word order ×1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("status should mention %q:\n%s", want, out)
+		}
+	}
+	// The most frequent one comes first: that is the order the prompt uses.
+	if i, j := strings.Index(out, "past simple"), strings.Index(out, "articles"); i > j {
+		t.Errorf("trouble spots out of order:\n%s", out)
+	}
+}
+
+func TestStatusSaysWhenThereAreNoTroubleSpotsYet(t *testing.T) {
+	store := newStore(t)
+	tut := tutor.New(nil, store, tutor.Settings{})
+	cfg := statusConfig()
+
+	out, _ := capture(t, func() {
+		status(context.Background(), ollama.New("http://127.0.0.1:1"), cfg, store, tut)
+	})
+	if !strings.Contains(out, "errores recurrentes: todavía ninguno") {
+		t.Errorf("an empty profile should say so instead of printing nothing:\n%s", out)
+	}
+}
+
 func TestStatusAsksOllamaWhatIsLoaded(t *testing.T) {
 	f := newFakeOllama()
 	srv := f.server(t)
