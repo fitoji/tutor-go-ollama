@@ -173,16 +173,20 @@ func run() error {
 		}
 		// The review pass runs every turn: it carries the corrections and the
 		// facts the tutor remembers, so --corrections only hides the ✎ lines.
-		corr, facts, err := tut.Correct(turnCtx, line)
+		rev, err := tut.Correct(turnCtx, line)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			fmt.Fprintln(os.Stderr, "[correcciones]", err)
 		}
-		for _, f := range facts {
+		for _, f := range rev.Facts {
 			fmt.Printf("  ✚ recordado: %s\n", f)
 		}
 		if cfg.Corrections {
-			for _, c := range corr {
+			for _, c := range rev.Corrections {
 				fmt.Printf("  ✎ %q → %q  (%s)\n", c.Original, c.Better, c.Note)
+			}
+			// From C1 up the review also rewrites the whole message.
+			if rev.Rewrite != "" {
+				fmt.Printf("  ↻ %s\n", rev.Rewrite)
 			}
 		}
 		tut.FoldAsync(ctx, func(err error) { fmt.Fprintln(os.Stderr, "\n[memoria]", err) })

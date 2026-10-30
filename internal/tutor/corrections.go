@@ -17,23 +17,74 @@ type Correction struct {
 	Note     string `json:"note"`
 }
 
-const maxCorrections = 3
+// Review is one structured pass over the learner's message: what to correct,
+// what to remember and, from C1 up, how a native speaker would say it.
+type Review struct {
+	Corrections []Correction
+	Facts       []Fact
+	Rewrite     string
+}
 
-// The prompt spells out the JSON shape because OpenAI-compatible providers
-// only offer JSON mode (no schema), and JSON mode requires the word "JSON".
-const correctionPrompt = `You are an English teacher reviewing ONE message written by a learner at CEFR level %s.
-List only real mistakes: grammar, wrong word choice, or phrasing a native speaker would not use.
-Judge it against what a %s learner is expected to control: do not flag a simple but correct phrase, and do not push structures above their level.
-If a mistake belongs to a higher level, list it only when it makes the sentence hard to understand.
-Ignore capitalization, punctuation and obvious typos. If the message is fine, return an empty list.
-For each mistake give "original" (the exact wrong fragment), "better" (the corrected fragment), "category" (two or three lowercase English words, e.g. "past simple", "articles", "word order") and "note" (at most 12 words, written in %s).
-Also list the durable facts the learner states about themselves, each as "key" and "value".
-Use the keys name, country, city and hobby for those four; any other lasting fact (job, family, plans) gets a short lowercase key of your own.
-Only facts written in the message: never invent one, never reuse an example from these instructions, and keep their words.
-Answer with a JSON object and nothing else, in exactly this shape:
-{"corrections":[{"original":"...","better":"...","category":"...","note":"..."}],"facts":[{"key":"...","value":"..."}]}
-Never a bare list: with nothing to report, answer {"corrections":[],"facts":[]}.
-Inside a value, never use double quotes: write the words plainly, without quoting them.`
+// correctionPolicy is how hard the review looks. The ladder grows with the
+// level: a beginner is not buried in notes, an advanced learner is corrected
+// on everything.
+type correctionPolicy struct {
+	Max     int    // corrections to keep
+	Rules   string // the paragraph that sets the tone
+	Rewrite bool   // ask for a native rewrite of the whole message
+	Tokens  int    // reply budget
+}
+
+func policyFor(level string) correctionPolicy {
+	switch strings.ToUpper(strings.TrimSpace(level)) {
+	case "A1", "A2":
+		return correctionPolicy{
+			Max:    2,
+			Rules:  "Be gentle: list only mistakes that block understanding or that a beginner should already control, and never more than 2.",
+			Tokens: 300,
+		}
+	case "C1", "C2":
+		return correctionPolicy{
+			Max:     6,
+			Rules:   "Be exhaustive: list everything a native speaker would change — grammar, collocation, register, redundancy, word choice — even when the message is understandable. Up to 6.",
+			Rewrite: true,
+			Tokens:  700,
+		}
+	default:
+		// B1, B2 and any level we do not know: demanding, but still bounded.
+		return correctionPolicy{
+			Max:    4,
+			Rules:  "Be demanding: list every real mistake at or below their level, including word choice and word order. Up to 4.",
+			Tokens: 450,
+		}
+	}
+}
+
+// correctionSystem builds the review prompt. The JSON shape is spelled out
+// because OpenAI-compatible providers only offer JSON mode (no schema), and
+// JSON mode requires the word "JSON".
+func correctionSystem(level string, p correctionPolicy, notesLang string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "You are an English teacher reviewing ONE message written by a learner at CEFR level %s.\n", level)
+	b.WriteString(p.Rules + "\n")
+	b.WriteString("Ignore capitalization, punctuation and obvious typos. If the message is fine, return an empty list.\n")
+	fmt.Fprintf(&b, "For each mistake give \"original\" (the exact wrong fragment), \"better\" (the corrected fragment), \"category\" (two or three lowercase English words, e.g. \"past simple\", \"articles\", \"word order\") and \"note\" (at most 12 words, written in %s).\n", notesLang)
+	b.WriteString("Also list the durable facts the learner states about themselves, each as \"key\" and \"value\".\n")
+	b.WriteString("Use the keys name, country, city and hobby for those four; any other lasting fact (job, family, plans) gets a short lowercase key of your own.\n")
+	b.WriteString("Only facts written in the message: never invent one, never reuse an example from these instructions, and keep their words.\n")
+	if p.Rewrite {
+		b.WriteString("Also add \"rewrite\": the whole message as a native speaker would write it, keeping the learner's meaning and detail, in one sentence.\n")
+		b.WriteString("Answer with a JSON object and nothing else, in exactly this shape:\n")
+		b.WriteString("{\"corrections\":[{\"original\":\"...\",\"better\":\"...\",\"category\":\"...\",\"note\":\"...\"}],\"facts\":[{\"key\":\"...\",\"value\":\"...\"}],\"rewrite\":\"...\"}\n")
+		b.WriteString("Never a bare list: with nothing to report, answer {\"corrections\":[],\"facts\":[],\"rewrite\":\"\"}.\n")
+	} else {
+		b.WriteString("Answer with a JSON object and nothing else, in exactly this shape:\n")
+		b.WriteString("{\"corrections\":[{\"original\":\"...\",\"better\":\"...\",\"category\":\"...\",\"note\":\"...\"}],\"facts\":[{\"key\":\"...\",\"value\":\"...\"}]}\n")
+		b.WriteString("Never a bare list: with nothing to report, answer {\"corrections\":[],\"facts\":[]}.\n")
+	}
+	b.WriteString("Inside a value, never use double quotes: write the words plainly, without quoting them.")
+	return b.String()
+}
 
 var correctionSchema = json.RawMessage(`{
   "type": "object",
@@ -51,6 +102,7 @@ var correctionSchema = json.RawMessage(`{
         "required": ["original", "better", "category", "note"]
       }
     },
+    "rewrite": {"type": "string"},
     "facts": {
       "type": "array",
       "items": {
@@ -67,25 +119,39 @@ var correctionSchema = json.RawMessage(`{
 }`)
 
 // Correct runs the review pass over one learner message: it records the mistake
-// categories and the durable facts in the profile, and returns both so the app
-// can show them. It sends only that message (no history), so it is cheap, and
-// it uses the same model as the conversation, so nothing else is loaded.
-func (t *Tutor) Correct(ctx context.Context, text string) ([]Correction, []Fact, error) {
+// categories and the durable facts in the profile, and returns the review so the
+// app can show it. How hard it looks depends on the learner's level. It sends
+// only that message (no history), so it is cheap, and it uses the same model as
+// the conversation, so nothing else is loaded.
+func (t *Tutor) Correct(ctx context.Context, text string) (Review, error) {
 	if len(strings.Fields(text)) < 2 {
-		return nil, nil, nil
+		return Review{}, nil
 	}
-	raw, err := t.chat(ctx, t.correctionRequest(text))
+	level := "B1"
+	if t.store != nil {
+		level = t.store.Level()
+	}
+	policy := policyFor(level)
+	raw, err := t.chat(ctx, t.correctionRequest(text, level, policy))
 	if err != nil {
-		return nil, nil, err
+		return Review{}, err
 	}
-	corrections, facts, err := parseReview(raw)
+	rev, err := parseReview(raw)
 	if err != nil {
-		return nil, nil, err
+		return Review{}, err
 	}
+	if len(rev.Corrections) > policy.Max {
+		rev.Corrections = rev.Corrections[:policy.Max]
+	}
+	// The native rewrite is a C1/C2 feature: never hand one to a beginner.
+	if !policy.Rewrite {
+		rev.Rewrite = ""
+	}
+
 	var changed []string
 	seen := map[string]bool{}
 	err = t.store.Update(func(d *conv.Data) {
-		for _, c := range corrections {
+		for _, c := range rev.Corrections {
 			d.RecordMistake(c.Category)
 		}
 		record := func(key, value string) {
@@ -97,7 +163,7 @@ func (t *Tutor) Correct(ctx context.Context, text string) ([]Correction, []Fact,
 				changed = append(changed, k)
 			}
 		}
-		for _, f := range facts {
+		for _, f := range rev.Facts {
 			record(f.Key, f.Value)
 		}
 		// Safety net for the first turn: an introduction is the one fact worth
@@ -109,7 +175,7 @@ func (t *Tutor) Correct(ctx context.Context, text string) ([]Correction, []Fact,
 		}
 	})
 	if err != nil {
-		return corrections, nil, err
+		return Review{}, err
 	}
 	// Report what was stored: SetFact normalizes the key and may cut a long
 	// value, so the announcement cannot be built from the raw answer.
@@ -120,23 +186,19 @@ func (t *Tutor) Correct(ctx context.Context, text string) ([]Correction, []Fact,
 			learned = append(learned, Fact{Key: k, Value: d.Profile.Facts[k]})
 		}
 	}
-	return corrections, learned, nil
+	rev.Facts = learned
+	return rev, nil
 }
 
-// correctionRequest builds the request Correct sends. ProbeCorrections reuses
-// it so that --selftest probes exactly what production sends.
-func (t *Tutor) correctionRequest(text string) llm.Request {
-	// The level is per learner and lives in the store; a probe without one
-	// (--selftest) uses the same default the app applies to a new profile.
-	level := "B1"
-	if t.store != nil {
-		level = t.store.Level()
-	}
+// correctionRequest builds the review request for a level and its policy.
+// ProbeCorrections reuses it so that --selftest probes exactly what production
+// sends for a new learner.
+func (t *Tutor) correctionRequest(text, level string, p correctionPolicy) llm.Request {
 	msgs := []llm.Message{
-		{Role: "system", Content: fmt.Sprintf(correctionPrompt, level, level, t.st.NotesLang)},
+		{Role: "system", Content: correctionSystem(level, p, t.st.NotesLang)},
 		{Role: "user", Content: "Learner message: " + text},
 	}
-	req := t.request(msgs, 0, 300)
+	req := t.request(msgs, 0, p.Tokens)
 	req.JSONSchema = correctionSchema
 	return req
 }
@@ -146,12 +208,12 @@ func (t *Tutor) correctionRequest(text string) llm.Request {
 // without polluting the learner profile.
 func ProbeCorrections(ctx context.Context, lm llm.Chatter, st Settings) ([]Correction, error) {
 	t := New(lm, nil, st) // this path never uses the store
-	raw, err := t.chat(ctx, t.correctionRequest(ProbeSample))
+	raw, err := t.chat(ctx, t.correctionRequest(ProbeSample, "B1", policyFor("B1")))
 	if err != nil {
 		return nil, err
 	}
-	corrections, _, err := parseReview(raw)
-	return corrections, err
+	rev, err := parseReview(raw)
+	return rev.Corrections, err
 }
 
 // ProbeSample is the sentence the correction probe sends: it has one
@@ -166,24 +228,32 @@ const ProbeSample = "Yesterday I go to the cinema with my friend."
 //     unescaped double quotes ("note":"Usa "otra" forma"), which is salvaged
 //     field by field. Only corrections survive this path: salvaging facts out
 //     of broken JSON is not worth the risk of inventing one.
-func parseReview(raw string) ([]Correction, []Fact, error) {
+func parseReview(raw string) (Review, error) {
 	body := extractJSON(raw)
 	var wrapped struct {
 		Corrections []Correction `json:"corrections"`
 		Facts       []Fact       `json:"facts"`
+		Rewrite     string       `json:"rewrite"`
 	}
 	err := json.Unmarshal([]byte(body), &wrapped)
 	if err == nil {
-		return normalizeCorrections(wrapped.Corrections), normalizeFacts(wrapped.Facts), nil
+		return Review{
+			Corrections: normalizeCorrections(wrapped.Corrections, maxCorrectionsAllowed),
+			Facts:       normalizeFacts(wrapped.Facts),
+			Rewrite:     strings.TrimSpace(wrapped.Rewrite),
+		}, nil
 	}
 	if list, ok := decodeList(body); ok {
-		return normalizeCorrections(list), nil, nil
+		return Review{Corrections: normalizeCorrections(list, maxCorrectionsAllowed)}, nil
 	}
 	if salvaged := salvageCorrections(body); len(salvaged) > 0 {
-		return normalizeCorrections(salvaged), nil, nil
+		return Review{Corrections: normalizeCorrections(salvaged, maxCorrectionsAllowed)}, nil
 	}
-	return nil, nil, fmt.Errorf("could not read corrections: %w", err)
+	return Review{}, fmt.Errorf("could not read corrections: %w", err)
 }
+
+// maxCorrectionsAllowed is the most any level may keep; the policy trims it.
+const maxCorrectionsAllowed = 6
 
 // maxFactsPerMessage keeps one rambling answer from flooding the profile.
 const maxFactsPerMessage = 5
@@ -266,8 +336,8 @@ func salvageValue(s, start, end string) string {
 }
 
 // normalizeCorrections drops entries that are not a real change and keeps at
-// most maxCorrections.
-func normalizeCorrections(in []Correction) []Correction {
+// most max.
+func normalizeCorrections(in []Correction, max int) []Correction {
 	var out []Correction
 	for _, c := range in {
 		c.Original, c.Better = strings.TrimSpace(c.Original), strings.TrimSpace(c.Better)
@@ -275,7 +345,7 @@ func normalizeCorrections(in []Correction) []Correction {
 			continue
 		}
 		out = append(out, c)
-		if len(out) == maxCorrections {
+		if len(out) == max {
 			break
 		}
 	}

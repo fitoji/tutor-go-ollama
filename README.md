@@ -155,7 +155,27 @@ La diferencia se nota. Con el mismo mensaje (*"I would like to talk about the im
 - **A1** → "That is a big topic, Fito! Since you like cooking, do you use many new kitchen tools? How does your phone help you every day?"
 - **C1** → "Some argue that while efficiency has soared, the erosion of face-to-face interaction is a serious concern we must address."
 
-**Las correcciones también respetan el nivel.** La pasada de revisión recibe tu nivel y lo juzga contra lo que se espera de él: no marca una frase simple pero correcta, y no te empuja estructuras por encima. Un error de un nivel superior solo aparece si hace difícil entender la frase.
+### Cuánto corrige
+
+La exigencia sube con el nivel, en tres tramos. La pasada de revisión recibe el nivel y cambia de vara:
+
+| Tramo | Correcciones | Qué marca |
+|---|---|---|
+| **A1-A2** | hasta 2 | solo lo que impide entender o lo que un principiante ya debería dominar |
+| **B1-B2** | hasta 4 | todo error real de su nivel o por debajo, incluido *word choice* y orden de palabras |
+| **C1-C2** | hasta 6 | todo lo que un nativo cambiaría: gramática, colocación, registro, redundancia… **y una reescritura completa** |
+
+Con el mismo mensaje lleno de errores (*"Yesterday I go to the cinema with my friends, it was very good and we eat pizza after. I think it is more better than stay at home."*):
+
+- **A1** → 2 correcciones (`I go` → `I went`, `more better` → `better`).
+- **B1** → 3: aparece `we eat pizza after` → `we ate pizza afterwards`.
+- **C1** → 4: aparece además `than stay` → `than staying`, y la frase entera reescrita:
+
+```
+  ↻ Yesterday I went to the cinema with my friends, we ate pizza afterwards, and I think it is better than staying at home.
+```
+
+La reescritura (`↻`) es exclusiva de C1 y C2: a un B1 no se le entrega una versión que todavía no puede producir.
 
 Límites: es una guía, no una medición. La app no detecta tu nivel ni te promociona sola; lo cambiás vos con `/level`. Si el nivel guardado no está en la tabla (un perfil viejo), el prompt usa solo la letra y nada más.
 
