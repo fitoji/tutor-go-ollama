@@ -38,10 +38,27 @@ func System(d Data) string {
 	if m := d.TopMistakes(3); len(m) > 0 {
 		fmt.Fprintf(&sb, "\nRecurring trouble spots (model them correctly, never lecture): %s.", strings.Join(m, ", "))
 	}
+	writeFacts(&sb, d)
 	if d.Summary != "" {
 		fmt.Fprintf(&sb, "\n\nSummary of the conversation so far:\n%s", d.Summary)
 	}
 	return sb.String()
+}
+
+// writeFacts adds what the tutor remembers about the learner. On the first
+// meetings it also asks for the four basics, one question per turn: that is the
+// onboarding that makes the talk personal. The app stores what the learner says
+// in the review pass, so the tutor never has to write anything special.
+func writeFacts(sb *strings.Builder, d Data) {
+	if len(d.Profile.Facts) > 0 {
+		sb.WriteString("\n\nWhat you already know about the learner (use it naturally, never recite the list):")
+		for _, k := range d.FactKeys() {
+			fmt.Fprintf(sb, "\n- %s: %s", k, d.Profile.Facts[k])
+		}
+	}
+	if missing := d.MissingBasics(); len(missing) > 0 {
+		fmt.Fprintf(sb, "\n\nYou still do not know their %s. Ask for them one per turn, starting with their name if it is missing, woven into the conversation, before practising the topic.", strings.Join(missing, ", "))
+	}
 }
 
 // Build returns the exact message list for the next chat request: the system

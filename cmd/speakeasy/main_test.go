@@ -614,6 +614,59 @@ func TestPickLearnerWithExplicitStateLeavesNoUsersDir(t *testing.T) {
 	}
 }
 
+func TestCommandForget(t *testing.T) {
+	store := newStore(t)
+	store.Update(func(d *conv.Data) { d.SetFact("city", "Madrid") })
+	tut := tutor.New(nil, store, tutor.Settings{})
+	cfg := statusConfig()
+	cl := ollama.New("http://127.0.0.1:1")
+
+	out, _ := capture(t, func() { command(context.Background(), "/forget city", cl, cfg, store, tut) })
+	if !strings.Contains(out, "olvidado") {
+		t.Errorf("unexpected output: %q", out)
+	}
+	if _, ok := store.View().Profile.Facts["city"]; ok {
+		t.Error("the fact should be gone")
+	}
+	out, _ = capture(t, func() { command(context.Background(), "/forget city", cl, cfg, store, tut) })
+	if !strings.Contains(out, "no tenía") {
+		t.Errorf("unexpected output: %q", out)
+	}
+	out, _ = capture(t, func() { command(context.Background(), "/forget", cl, cfg, store, tut) })
+	if !strings.Contains(out, "uso: /forget") {
+		t.Errorf("unexpected output: %q", out)
+	}
+}
+
+func TestStatusShowsWhatTheTutorRemembers(t *testing.T) {
+	store := newStore(t)
+	store.Update(func(d *conv.Data) {
+		d.SetFact("name", "Fito")
+		d.SetFact("city", "Madrid")
+	})
+	tut := tutor.New(nil, store, tutor.Settings{})
+
+	out, _ := capture(t, func() {
+		status(context.Background(), ollama.New("http://127.0.0.1:1"), statusConfig(), store, tut)
+	})
+	for _, want := range []string{"lo que sabe de vos", "name=Fito", "city=Madrid"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("status should mention %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestStatusSaysWhenItKnowsNothingYet(t *testing.T) {
+	store := newStore(t)
+	tut := tutor.New(nil, store, tutor.Settings{})
+	out, _ := capture(t, func() {
+		status(context.Background(), ollama.New("http://127.0.0.1:1"), statusConfig(), store, tut)
+	})
+	if !strings.Contains(out, "lo que sabe de vos: todavía nada") {
+		t.Errorf("an empty profile should say so:\n%s", out)
+	}
+}
+
 func TestLabelsAndHostParsing(t *testing.T) {
 	if got := ttsLabel(config.Config{Mute: true, TTS: "phonon"}, nil); got != "off" {
 		t.Errorf("muted ttsLabel = %q", got)

@@ -19,6 +19,9 @@ const (
 	maxTurnsOnDisk = 200
 	maxMistakes    = 30
 	maxTopics      = 5
+	maxFacts       = 40
+	maxFactKey     = 40
+	maxFactValue   = 200
 )
 
 type Turn struct {
@@ -27,9 +30,10 @@ type Turn struct {
 }
 
 type Profile struct {
-	Level    string         `json:"level"`
-	Topics   []string       `json:"topics,omitempty"`
-	Mistakes map[string]int `json:"mistakes,omitempty"`
+	Level    string            `json:"level"`
+	Topics   []string          `json:"topics,omitempty"`
+	Mistakes map[string]int    `json:"mistakes,omitempty"`
+	Facts    map[string]string `json:"facts,omitempty"`
 }
 
 type Data struct {
@@ -131,6 +135,87 @@ func (d *Data) TopMistakes(n int) []string {
 	return keys
 }
 
+// basicFacts are the four things the tutor asks for on the first meeting.
+// They are the ones that make the small talk personal.
+var basicFacts = []string{"name", "country", "city", "hobby"}
+
+// SetFact stores one durable fact about the learner, normalized so the same
+// fact written twice does not become two entries. It reports whether anything
+// changed, so the app only announces real news.
+func (d *Data) SetFact(key, value string) bool {
+	key = NormalizeFactKey(key)
+	value = strings.TrimSpace(value)
+	if key == "" || value == "" {
+		return false
+	}
+	if r := []rune(value); len(r) > maxFactValue {
+		value = strings.TrimSpace(string(r[:maxFactValue]))
+	}
+	if d.Profile.Facts == nil {
+		d.Profile.Facts = map[string]string{}
+	}
+	if old, ok := d.Profile.Facts[key]; ok {
+		if old == value {
+			return false
+		}
+		d.Profile.Facts[key] = value
+		return true
+	}
+	if len(d.Profile.Facts) >= maxFacts {
+		return false
+	}
+	d.Profile.Facts[key] = value
+	return true
+}
+
+// DeleteFact forgets one fact. It reports whether there was something to
+// forget, so the command can answer honestly.
+func (d *Data) DeleteFact(key string) bool {
+	key = NormalizeFactKey(key)
+	if key == "" {
+		return false
+	}
+	if _, ok := d.Profile.Facts[key]; !ok {
+		return false
+	}
+	delete(d.Profile.Facts, key)
+	return true
+}
+
+// FactKeys returns the stored keys in a stable order, so the prompt and the
+// status line do not shuffle between requests.
+func (d *Data) FactKeys() []string {
+	keys := make([]string, 0, len(d.Profile.Facts))
+	for k := range d.Profile.Facts {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// MissingBasics lists the facts the tutor still has to ask for.
+func (d *Data) MissingBasics() []string {
+	var out []string
+	for _, k := range basicFacts {
+		if strings.TrimSpace(d.Profile.Facts[k]) == "" {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// NormalizeFactKey folds a key the way a person would: case and spacing are
+// not part of the fact, so "Home City" and "home city" are the same entry. It
+// returns "" for a key that is empty or too long to store.
+func NormalizeFactKey(k string) string {
+	k = strings.ToLower(strings.TrimSpace(k))
+	k = strings.Join(strings.Fields(k), "-")
+	if k == "" || utf8.RuneCountInString(k) > maxFactKey {
+		return ""
+	}
+	return k
+}
+
 // AddTopic remembers a topic of interest, keeping only the latest few.
 func (d *Data) AddTopic(topic string) {
 	topic = strings.TrimSpace(topic)
@@ -184,6 +269,12 @@ func (s *Store) View() Data {
 		c.Profile.Mistakes = make(map[string]int, len(s.d.Profile.Mistakes))
 		for k, v := range s.d.Profile.Mistakes {
 			c.Profile.Mistakes[k] = v
+		}
+	}
+	if s.d.Profile.Facts != nil {
+		c.Profile.Facts = make(map[string]string, len(s.d.Profile.Facts))
+		for k, v := range s.d.Profile.Facts {
+			c.Profile.Facts[k] = v
 		}
 	}
 	return c

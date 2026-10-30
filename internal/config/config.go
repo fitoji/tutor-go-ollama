@@ -103,7 +103,7 @@ func Parse(args []string) (Config, error) {
 	fs.IntVar(&c.NumCtx, "num-ctx", envInt("SPEAKEASY_NUM_CTX", 0), "prompt budget in tokens (default 4096 remote, 8192 ollama)")
 	fs.StringVar(&c.KeepAlive, "keep-alive", envOr("SPEAKEASY_KEEP_ALIVE", "30m"), "how long Ollama keeps the LLM in memory")
 	fs.BoolVar(&c.Think, "think", false, "allow model thinking mode (ollama only)")
-	fs.BoolVar(&c.Corrections, "corrections", true, "show corrections of your messages after each turn")
+	fs.BoolVar(&c.Corrections, "corrections", true, "show corrections after each turn (the review pass still runs: it also remembers facts)")
 	fs.StringVar(&c.NotesLang, "notes", envOr("SPEAKEASY_NOTES", "Spanish"), "language of correction notes")
 	fs.StringVar(&c.User, "user", envOr("SPEAKEASY_USER", ""), "learner name; each name keeps its own level and corrections (asks at startup when empty)")
 	fs.StringVar(&c.StatePath, "state", filepath.Join(home, ".speakeasy", "state.json"), "state file; without this flag each learner gets a directory next to it")

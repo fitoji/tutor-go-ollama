@@ -171,11 +171,16 @@ func run() error {
 		if u != nil {
 			u.Finish() // audio keeps playing while we compute the corrections
 		}
+		// The review pass runs every turn: it carries the corrections and the
+		// facts the tutor remembers, so --corrections only hides the ✎ lines.
+		corr, facts, err := tut.Correct(turnCtx, line)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			fmt.Fprintln(os.Stderr, "[correcciones]", err)
+		}
+		for _, f := range facts {
+			fmt.Printf("  ✚ recordado: %s\n", f)
+		}
 		if cfg.Corrections {
-			corr, err := tut.Correct(turnCtx, line)
-			if err != nil && !errors.Is(err, context.Canceled) {
-				fmt.Fprintln(os.Stderr, "[correcciones]", err)
-			}
 			for _, c := range corr {
 				fmt.Printf("  ✎ %q → %q  (%s)\n", c.Original, c.Better, c.Note)
 			}
@@ -378,6 +383,7 @@ func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Con
 		fmt.Println(`/reset        empezar una conversación nueva (mantiene tu perfil)
 /level B1     cambiar tu nivel (A2, B1, B2, C1)
 /topic X      añadir un tema de interés
+/forget clave olvidar un dato que el tutor guardó (ej: /forget city)
 /status       modelo, memoria usada y estado de la conversación
 /quit         salir`)
 	case "/reset":
@@ -399,6 +405,21 @@ func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Con
 		}
 		_ = store.Update(func(d *conv.Data) { d.AddTopic(arg) })
 		fmt.Println("tema añadido")
+	case "/forget":
+		if arg == "" {
+			fmt.Println("uso: /forget city")
+			return
+		}
+		var removed bool
+		if err := store.Update(func(d *conv.Data) { removed = d.DeleteFact(arg) }); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return
+		}
+		if removed {
+			fmt.Printf("olvidado: %s\n", conv.NormalizeFactKey(arg))
+		} else {
+			fmt.Printf("no tenía nada guardado con la clave %q\n", arg)
+		}
 	case "/status":
 		status(ctx, cl, cfg, store, tut)
 	default:
@@ -436,6 +457,17 @@ func status(ctx context.Context, cl *ollama.Client, cfg config.Config, store *co
 		fmt.Printf("errores recurrentes: %s\n", strings.Join(parts, " · "))
 	} else {
 		fmt.Println("errores recurrentes: todavía ninguno")
+	}
+	// The facts are the other half of the memory: what the tutor knows about
+	// the learner as a person, not as a student.
+	if keys := d.FactKeys(); len(keys) > 0 {
+		parts := make([]string, len(keys))
+		for i, k := range keys {
+			parts[i] = k + "=" + d.Profile.Facts[k]
+		}
+		fmt.Printf("lo que sabe de vos: %s\n", strings.Join(parts, " · "))
+	} else {
+		fmt.Println("lo que sabe de vos: todavía nada")
 	}
 	if n := tut.LastPromptTokens(); n > 0 {
 		fmt.Printf("último prompt: %d de %d tokens\n", n, cfg.NumCtx)

@@ -173,6 +173,126 @@ func TestStoreRoundTripAndAtomicWrite(t *testing.T) {
 	}
 }
 
+func TestSetFactNormalizesAndReportsChange(t *testing.T) {
+	d := Data{Profile: Profile{Level: "B1"}}
+	if !d.SetFact(" Name ", " Fito ") {
+		t.Fatal("the first fact must report a change")
+	}
+	if got := d.Profile.Facts["name"]; got != "Fito" {
+		t.Errorf("facts[name] = %q, want Fito", got)
+	}
+	if d.SetFact("name", "Fito") {
+		t.Error("writing the same value again is not news")
+	}
+	if !d.SetFact("home city", "Madrid") {
+		t.Fatal("a multi-word key must be accepted")
+	}
+	if _, ok := d.Profile.Facts["home-city"]; !ok {
+		t.Errorf("multi-word keys collapse to dashes: %v", d.Profile.Facts)
+	}
+	if d.SetFact("name", "Fito Alvarez") {
+		if d.Profile.Facts["name"] != "Fito Alvarez" {
+			t.Error("a corrected fact must replace the old one")
+		}
+	}
+	for _, c := range []struct{ key, value string }{
+		{"", "x"}, {"  ", "x"}, {"city", ""}, {"city", "   "},
+	} {
+		if d.SetFact(c.key, c.value) {
+			t.Errorf("SetFact(%q, %q) must be rejected", c.key, c.value)
+		}
+	}
+	// A key that would not fit the budget is refused, not silently truncated
+	// into a different fact.
+	if d.SetFact(strings.Repeat("k", 60), "x") {
+		t.Error("an oversized key must be rejected")
+	}
+	// A long value is cut, so a rambling model cannot blow up the state file.
+	d.SetFact("job", strings.Repeat("a", 400))
+	if n := len([]rune(d.Profile.Facts["job"])); n != 200 {
+		t.Errorf("value length = %d, want 200", n)
+	}
+}
+
+func TestFactLimitAndDelete(t *testing.T) {
+	d := Data{Profile: Profile{Level: "B1"}}
+	for i := 0; i < 40; i++ {
+		if !d.SetFact(fmt.Sprintf("k%d", i), "v") {
+			t.Fatalf("fact %d rejected below the cap", i)
+		}
+	}
+	if d.SetFact("one-more", "v") {
+		t.Error("the cap must hold")
+	}
+	// An existing key can still be updated at the cap.
+	if !d.SetFact("k0", "other") {
+		t.Error("updating an existing fact must work at the cap")
+	}
+	if !d.DeleteFact("K0") {
+		t.Error("delete must be case-insensitive like set")
+	}
+	if d.DeleteFact("k0") {
+		t.Error("deleting a missing fact is not a change")
+	}
+}
+
+func TestMissingBasics(t *testing.T) {
+	d := Data{Profile: Profile{Level: "B1"}}
+	if got := d.MissingBasics(); strings.Join(got, ",") != "name,country,city,hobby" {
+		t.Errorf("MissingBasics = %v", got)
+	}
+	d.SetFact("name", "Fito")
+	d.SetFact("city", "Madrid")
+	if got := d.MissingBasics(); strings.Join(got, ",") != "country,hobby" {
+		t.Errorf("MissingBasics = %v", got)
+	}
+}
+
+func TestSystemCarriesWhatTheTutorKnows(t *testing.T) {
+	d := Data{Profile: Profile{Level: "B1"}}
+	d.SetFact("name", "Fito")
+	d.SetFact("city", "Madrid")
+
+	sys := System(d)
+	for _, want := range []string{"name: Fito", "city: Madrid", "country", "hobby"} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("system prompt should mention %q:\n%s", want, sys)
+		}
+	}
+	// With nothing known the prompt must still invite the onboarding.
+	empty := System(Data{Profile: Profile{Level: "B1"}})
+	if !strings.Contains(empty, "still do not know") || !strings.Contains(empty, "name") {
+		t.Errorf("an empty profile should ask who the learner is:\n%s", empty)
+	}
+	// Once the four basics are known, the onboarding instructions go away and
+	// only the "remember new facts" rule stays.
+	for _, kv := range [][2]string{{"name", "Fito"}, {"country", "Argentina"}, {"city", "Madrid"}, {"hobby", "cooking"}} {
+		d.SetFact(kv[0], kv[1])
+	}
+	full := System(d)
+	if strings.Contains(full, "still do not know") {
+		t.Errorf("a complete profile must not be sent back to onboarding:\n%s", full)
+	}
+	if !strings.Contains(full, "hobby: cooking") {
+		t.Errorf("the known facts must stay in the prompt:\n%s", full)
+	}
+}
+
+func TestViewCopiesFacts(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Update(func(d *Data) { d.SetFact("name", "Fito") }); err != nil {
+		t.Fatal(err)
+	}
+	v := s.View()
+	v.Profile.Facts["name"] = "mutated"
+	if s.View().Profile.Facts["name"] != "Fito" {
+		t.Error("View leaks the facts map")
+	}
+}
+
 func TestOpenRejectsCorruptState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {

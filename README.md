@@ -19,7 +19,7 @@ Escribes en inglés (o en español; el tutor siempre responde en inglés). Mient
 
 Al arrancar te pregunta quién sos (`usuario:`); con Enter mantiene el último. Cada nombre guarda su propio nivel y sus propios errores, así que dos personas pueden compartir la máquina sin pisarse el perfil (ver [Un perfil por persona](#un-perfil-por-persona)).
 
-Comandos: `/reset`, `/level B2`, `/topic cine`, `/status`, `/quit`.
+Comandos: `/reset`, `/level B2`, `/topic cine`, `/forget city`, `/status`, `/quit`.
 
 ## Proveedores
 
@@ -41,7 +41,7 @@ Ejemplos:
 
 Con un proveedor remoto **tus mensajes salen a un servidor externo** (la app lo recuerda al arrancar). Usa modelos sin razonamiento largo: los que «piensan» gastan el límite de tokens antes de contestar. Si el modelo emite bloques `<think>...</think>`, se descartan.
 
-Otras opciones (flag o variable): `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice`, `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false`, `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo).
+Otras opciones (flag o variable): `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice`, `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false` (oculta los `✎`; la pasada de revisión sigue guardando datos), `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo).
 
 ### Antes de la primera sesión: `--selftest`
 
@@ -71,7 +71,7 @@ Lo que mató a LinguaLoop fue perder contexto y cargar varios modelos a la vez. 
 - **Ollama: `num_ctx` fijo e idéntico en todas las peticiones.** Si cambia entre peticiones, Ollama recarga el modelo; y si no se indica, el valor por defecto es pequeño y trunca en silencio el principio del prompt (el system prompt incluido).
 - **La app es dueña de la memoria, no el modelo.** Cada petición se reconstruye: reglas del tutor + perfil (nivel, temas, errores recurrentes) + resumen rodante + últimos turnos que quepan en el presupuesto (`--num-ctx`). Cuando los turnos guardados pasan del 45 % del presupuesto, los más antiguos se resumen en segundo plano (≤120 palabras). La estimación de tokens es pesimista (3 caracteres por token). En remoto el presupuesto es de 4096 para que cada petición sea pequeña y quepa en los límites por minuto del plan gratuito.
 - **Audio con memoria acotada:** como mucho ~3 clips existen a la vez (sonando, en espera, sintetizándose). Si el reproductor se atasca, el flujo del LLM se frena en vez de acumular.
-- **Estado:** un JSON pequeño **por alumno** (ver abajo), con escritura atómica, máximo 200 turnos, 30 categorías de error, 5 temas.
+- **Estado:** un JSON pequeño **por alumno** (ver abajo), con escritura atómica, máximo 200 turnos, 30 categorías de error, 5 temas y 40 datos personales.
 - **Este proceso:** ~10 MB de RSS medido contra servidores simulados; `debug.SetMemoryLimit` configurable.
 
 ### Presupuesto estimado (no medido) en 16 GB con Ollama local
@@ -118,6 +118,22 @@ usuario: Ana · /Users/vos/.speakeasy/users/ana/state.json
 chat: groq · llama-3.3-70b-versatile
 conversación: 12 turnos, resumen de 87 palabras, nivel B2
 ```
+
+## Lo que el tutor recuerda de vos
+
+Además de tu nivel y tus errores, el tutor guarda **datos personales** para que la charla tenga contexto. En la primera sesión pregunta, de a una por turno: tu nombre, de dónde sos, dónde vivís y qué te gusta hacer. Con eso arranca el tema y deja de preguntar.
+
+Después sigue aprendiendo: si contás que trabajás de algo, que tenés hermanos o que el mes que viene viajás, también lo guarda. La app es la que recuerda, no el modelo: cada turno reconstruye el system prompt con lo que sabe.
+
+```
+lo que sabe de vos: city=Madrid · country=Argentina · hobby=cooking · name=Fito
+```
+
+- Se guarda en tu perfil (`users/<nombre>/state.json`, campo `facts`), así que cada alumno tiene los suyos.
+- **`/forget city`** borra un dato. Sin eso, un nombre mal escrito quedaría pegado para siempre.
+- `/status` muestra todo lo que sabe; `/reset` borra la conversación pero **no** los datos.
+- Límites: 40 datos, clave de hasta 40 caracteres, valor de hasta 200. Los datos salen solo de lo que escribís: si el modelo devuelve un placeholder o algo que no está en tu mensaje, se descarta.
+- Los datos se extraen en la **pasada de revisión** (la misma que corrige), con salida JSON. `--corrections=false` oculta los `✎` pero la pasada sigue corriendo: es la que guarda los datos.
 
 ## Correcciones y perfil del alumno
 

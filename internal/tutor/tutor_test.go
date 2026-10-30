@@ -139,6 +139,73 @@ func TestReplyStreamsToScreenAndVoice(t *testing.T) {
 	}
 }
 
+// TestReviewRecordsFactsAndStoresThem pins the memory path: the review pass is
+// where the tutor learns who the learner is, and a fact is announced only when
+// it is real news.
+func TestReviewRecordsFactsAndStoresThem(t *testing.T) {
+	f := &fakeOllama{json: `{"corrections":[],"facts":[{"key":"name","value":"Fito"},{"key":"city","value":"Madrid"}]}`}
+	tut, store := setup(t, f, 8192)
+
+	_, facts, err := tut.Correct(context.Background(), "Hi, my name is Fito and I live in Madrid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fmt.Sprint(facts); got != "[name=Fito city=Madrid]" {
+		t.Errorf("facts = %v", got)
+	}
+	d := store.View()
+	if d.Profile.Facts["name"] != "Fito" || d.Profile.Facts["city"] != "Madrid" {
+		t.Errorf("stored facts = %v", d.Profile.Facts)
+	}
+	// The same answer twice is not news the second time.
+	_, again, err := tut.Correct(context.Background(), "Hi, my name is Fito and I live in Madrid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again) != 0 {
+		t.Errorf("repeated facts announced again: %v", again)
+	}
+}
+
+// TestReviewRejectsInventedFacts guards against a model that copies the
+// instructions instead of reading the message.
+func TestReviewRejectsInventedFacts(t *testing.T) {
+	f := &fakeOllama{json: `{"corrections":[],"facts":[{"key":"key","value":"value"},{"key":"name","value":"your_name"},{"key":"","value":"x"},{"key":"city","value":""}]}`}
+	tut, store := setup(t, f, 8192)
+
+	if _, facts, err := tut.Correct(context.Background(), "hello there friend"); err != nil || len(facts) != 0 {
+		t.Errorf("facts=%v err=%v, want nothing stored", facts, err)
+	}
+	if n := len(store.View().Profile.Facts); n != 0 {
+		t.Errorf("stored %d invented facts", n)
+	}
+}
+
+// TestReviewCapturesTheNameWhenTheModelForgets is the safety net: an
+// introduction is the one fact worth catching without the model's help.
+func TestReviewCapturesTheNameWhenTheModelForgets(t *testing.T) {
+	f := &fakeOllama{json: `{"corrections":[],"facts":[]}`}
+	tut, store := setup(t, f, 8192)
+
+	_, facts, err := tut.Correct(context.Background(), "Hi, my name is Ana")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := store.View().Profile.Facts["name"]; got != "Ana" {
+		t.Errorf("fact name = %q, want Ana", got)
+	}
+	if fmt.Sprint(facts) != "[name=Ana]" {
+		t.Errorf("facts = %v", facts)
+	}
+	// A known name is not overwritten by a later sentence.
+	if _, _, err := tut.Correct(context.Background(), "my name is Bea"); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.View().Profile.Facts["name"]; got != "Ana" {
+		t.Errorf("name changed to %q", got)
+	}
+}
+
 func TestEveryRequestUsesTheSameNumCtx(t *testing.T) {
 	// Different num_ctx values make Ollama reload the model. Replies,
 	// summaries and corrections must all agree.
@@ -153,7 +220,7 @@ func TestEveryRequestUsesTheSameNumCtx(t *testing.T) {
 	if _, err := tut.Reply(context.Background(), "one more thing here", nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tut.Correct(context.Background(), "one more thing here"); err != nil {
+	if _, _, err := tut.Correct(context.Background(), "one more thing here"); err != nil {
 		t.Fatal(err)
 	}
 	tut.FoldAsync(context.Background(), nil)
@@ -238,7 +305,7 @@ func TestCorrect(t *testing.T) {
 		{"original":"c","better":"d","category":"articles","note":"y"},
 		{"original":"e","better":"f","category":"articles","note":"y"}]}`}
 	tut, store := setup(t, f, 8192)
-	got, err := tut.Correct(context.Background(), "I go yesterday to the beach")
+	got, _, err := tut.Correct(context.Background(), "I go yesterday to the beach")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +348,7 @@ func TestCorrectAcceptsABareList(t *testing.T) {
 	for _, c := range cases {
 		f := &fakeOllama{json: c.json}
 		tut, store := setup(t, f, 8192)
-		got, err := tut.Correct(context.Background(), "I go yesterday to the beach")
+		got, _, err := tut.Correct(context.Background(), "I go yesterday to the beach")
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
@@ -302,7 +369,7 @@ func TestCorrectRecoversFromUnescapedQuotes(t *testing.T) {
 	f := &fakeOllama{json: `{"corrections":[{"original":"I go","better":"I went","category":"past simple","note":"Usa "otra" forma, no "go"."}]}`}
 	tut, store := setup(t, f, 8192)
 
-	got, err := tut.Correct(context.Background(), "I go to the cinema yesterday")
+	got, _, err := tut.Correct(context.Background(), "I go to the cinema yesterday")
 	if err != nil {
 		t.Fatalf("a recoverable answer must not fail: %v", err)
 	}
@@ -328,7 +395,7 @@ func TestCorrectRecoversSeveralBrokenEntries(t *testing.T) {
 		{"original":"a office","better":"an office","category":"articles","note":"Antes de vocal."}]}`}
 	tut, _ := setup(t, f, 8192)
 
-	got, err := tut.Correct(context.Background(), "I go to a office yesterday")
+	got, _, err := tut.Correct(context.Background(), "I go to a office yesterday")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,13 +410,13 @@ func TestCorrectRecoversSeveralBrokenEntries(t *testing.T) {
 func TestCorrectSkipsSingleWordsAndHandlesBadJSON(t *testing.T) {
 	f := &fakeOllama{json: `not json`}
 	tut, _ := setup(t, f, 8192)
-	if got, err := tut.Correct(context.Background(), "hello"); got != nil || err != nil {
+	if got, _, err := tut.Correct(context.Background(), "hello"); got != nil || err != nil {
 		t.Errorf("single word: %v %v", got, err)
 	}
 	if len(f.requests()) != 0 {
 		t.Error("single words must not cost an LLM call")
 	}
-	if _, err := tut.Correct(context.Background(), "hello there friend"); err == nil {
+	if _, _, err := tut.Correct(context.Background(), "hello there friend"); err == nil {
 		t.Error("bad JSON must be reported, not ignored")
 	}
 }
