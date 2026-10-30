@@ -135,6 +135,10 @@ func (d *Data) TopMistakes(n int) []string {
 	return keys
 }
 
+// MnemonicPrefix marks a fact that holds a memory trick (a Campayo image), not
+// something the tutor knows about the person. The prompt lists them apart.
+const MnemonicPrefix = "mnemonic-"
+
 // basicFacts are the four things the tutor asks for on the first meeting.
 // They are the ones that make the small talk personal.
 var basicFacts = []string{"name", "country", "city", "hobby"}

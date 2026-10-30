@@ -55,10 +55,24 @@ func System(d Data) string {
 // onboarding that makes the talk personal. The app stores what the learner says
 // in the review pass, so the tutor never has to write anything special.
 func writeFacts(sb *strings.Builder, d Data) {
-	if len(d.Profile.Facts) > 0 {
+	var facts, mnemonics []string
+	for _, k := range d.FactKeys() {
+		if strings.HasPrefix(k, MnemonicPrefix) {
+			mnemonics = append(mnemonics, k)
+		} else {
+			facts = append(facts, k)
+		}
+	}
+	if len(facts) > 0 {
 		sb.WriteString("\n\nWhat you already know about the learner (use it naturally, never recite the list):")
-		for _, k := range d.FactKeys() {
+		for _, k := range facts {
 			fmt.Fprintf(sb, "\n- %s: %s", k, d.Profile.Facts[k])
+		}
+	}
+	if len(mnemonics) > 0 {
+		sb.WriteString("\n\nMnemonics that already worked for them (reuse one only if that trouble spot comes up; never recite them):")
+		for _, k := range mnemonics {
+			fmt.Fprintf(sb, "\n- %s: %s", strings.TrimPrefix(k, MnemonicPrefix), d.Profile.Facts[k])
 		}
 	}
 	if missing := d.MissingBasics(); len(missing) > 0 {

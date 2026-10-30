@@ -302,3 +302,26 @@ func TestOpenRejectsCorruptState(t *testing.T) {
 		t.Error("corrupt state must be an error, not silently replaced")
 	}
 }
+
+// TestSystemSeparatesMnemonicsFromFacts keeps the two memories apart: a
+// mnemonic is a teaching trick, not something the tutor knows about the person.
+func TestSystemSeparatesMnemonicsFromFacts(t *testing.T) {
+	d := Data{Profile: Profile{Level: "B1"}}
+	d.SetFact("name", "Fito")
+	d.SetFact(MnemonicPrefix+"past-simple", "Un tren que ya pasó se aleja sin volver.")
+	d.SetFact(MnemonicPrefix+"articles", "Un artículo diminuto se pone el sombrero de 'an'.")
+
+	sys := System(d)
+	if !strings.Contains(sys, "Mnemonics") {
+		t.Errorf("mnemonics need their own section:\n%s", sys)
+	}
+	if !strings.Contains(sys, "past-simple: Un tren") {
+		t.Errorf("the mnemonic text is missing:\n%s", sys)
+	}
+	// The facts list must not carry them: "name: Fito" stays, the mnemonic key
+	// must not appear as a personal fact.
+	facts := strings.SplitN(sys, "Mnemonics", 2)[0]
+	if strings.Contains(facts, "mnemonic-") {
+		t.Errorf("a mnemonic leaked into the facts list:\n%s", facts)
+	}
+}

@@ -576,3 +576,77 @@ func TestCorrectionProbeDefaultsToB1(t *testing.T) {
 		t.Errorf("a probe without a profile must use B1:\n%s", sys)
 	}
 }
+
+// TestRepeatedCategoriesGetAMnemonic is the Campayo hook: only a trouble spot
+// that keeps coming back earns an image, and the image is remembered for next
+// time.
+func TestRepeatedCategoriesGetAMnemonic(t *testing.T) {
+	f := &fakeOllama{json: `{"corrections":[{"original":"I go yesterday","better":"I went yesterday","category":"past simple","note":"Usa pasado.","mnemonic":"Un tren que ya pasó se aleja y no vuelve."}],"facts":[]}`}
+	tut, store := setup(t, f, 8192)
+	store.Update(func(d *conv.Data) {
+		for i := 0; i < 3; i++ {
+			d.RecordMistake("past simple")
+		}
+	})
+
+	rev, err := tut.Correct(context.Background(), "I go yesterday to the beach")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sys := f.requests()[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if !strings.Contains(sys, "past simple (3 times)") {
+		t.Errorf("the prompt should name the repeated category:\n%s", sys)
+	}
+	if !strings.Contains(sys, "mnemonic") {
+		t.Errorf("the prompt should ask for a mnemonic:\n%s", sys)
+	}
+	if len(rev.Corrections) != 1 || rev.Corrections[0].Mnemonic == "" {
+		t.Fatalf("the mnemonic did not survive parsing: %+v", rev.Corrections)
+	}
+	if got := store.View().Profile.Facts["mnemonic-past-simple"]; got != "Un tren que ya pasó se aleja y no vuelve." {
+		t.Errorf("stored mnemonic = %q", got)
+	}
+}
+
+// TestNewCategoriesGetNoMnemonic keeps the noise out: a mistake seen once is
+// not a trouble spot yet.
+func TestNewCategoriesGetNoMnemonic(t *testing.T) {
+	f := &fakeOllama{json: `{"corrections":[{"original":"I go yesterday","better":"I went yesterday","category":"past simple","note":"Usa pasado.","mnemonic":"Inventado."}],"facts":[]}`}
+	tut, store := setup(t, f, 8192)
+
+	rev, err := tut.Correct(context.Background(), "I go yesterday to the beach")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sys := f.requests()[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if strings.Contains(sys, "keeps getting these wrong") {
+		t.Errorf("a single mistake is not a pattern:\n%s", sys)
+	}
+	if rev.Corrections[0].Mnemonic != "" {
+		t.Errorf("the mnemonic must be dropped: %q", rev.Corrections[0].Mnemonic)
+	}
+	if _, ok := store.View().Profile.Facts["mnemonic-past-simple"]; ok {
+		t.Error("an unwanted mnemonic was stored")
+	}
+}
+
+// TestMnemonicIsAskedOnlyOnce stops the tutor from reinventing the same image
+// every turn.
+func TestMnemonicIsAskedOnlyOnce(t *testing.T) {
+	f := &fakeOllama{json: `{"corrections":[],"facts":[]}`}
+	tut, store := setup(t, f, 8192)
+	store.Update(func(d *conv.Data) {
+		for i := 0; i < 5; i++ {
+			d.RecordMistake("past simple")
+		}
+		d.SetFact("mnemonic-past-simple", "Un tren que ya pasó.")
+	})
+
+	if _, err := tut.Correct(context.Background(), "I go yesterday to the beach"); err != nil {
+		t.Fatal(err)
+	}
+	sys := f.requests()[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if strings.Contains(sys, "past simple (5 times)") {
+		t.Errorf("a category that already has a mnemonic must not be asked again:\n%s", sys)
+	}
+}

@@ -183,6 +183,9 @@ func run() error {
 		if cfg.Corrections {
 			for _, c := range rev.Corrections {
 				fmt.Printf("  ✎ %q → %q  (%s)\n", c.Original, c.Better, c.Note)
+				if c.Mnemonic != "" {
+					fmt.Printf("  ✧ %s\n", c.Mnemonic)
+				}
 			}
 			// From C1 up the review also rewrites the whole message.
 			if rev.Rewrite != "" {
@@ -490,15 +493,23 @@ func status(ctx context.Context, cl *ollama.Client, cfg config.Config, store *co
 		fmt.Println("errores recurrentes: todavía ninguno")
 	}
 	// The facts are the other half of the memory: what the tutor knows about
-	// the learner as a person, not as a student.
-	if keys := d.FactKeys(); len(keys) > 0 {
-		parts := make([]string, len(keys))
-		for i, k := range keys {
-			parts[i] = k + "=" + d.Profile.Facts[k]
+	// the learner as a person, not as a student. Mnemonics live apart because
+	// they are teaching tricks, not things about you.
+	var facts, mnemonics []string
+	for _, k := range d.FactKeys() {
+		if strings.HasPrefix(k, conv.MnemonicPrefix) {
+			mnemonics = append(mnemonics, strings.TrimPrefix(k, conv.MnemonicPrefix)+"="+d.Profile.Facts[k])
+			continue
 		}
-		fmt.Printf("lo que sabe de vos: %s\n", strings.Join(parts, " · "))
+		facts = append(facts, k+"="+d.Profile.Facts[k])
+	}
+	if len(facts) > 0 {
+		fmt.Printf("lo que sabe de vos: %s\n", strings.Join(facts, " · "))
 	} else {
 		fmt.Println("lo que sabe de vos: todavía nada")
+	}
+	if len(mnemonics) > 0 {
+		fmt.Printf("mnemónicos: %s\n", strings.Join(mnemonics, " · "))
 	}
 	if n := tut.LastPromptTokens(); n > 0 {
 		fmt.Printf("último prompt: %d de %d tokens\n", n, cfg.NumCtx)

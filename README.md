@@ -177,6 +177,17 @@ Con el mismo mensaje lleno de errores (*"Yesterday I go to the cinema with my fr
 
 La reescritura (`↻`) es exclusiva de C1 y C2: a un B1 no se le entrega una versión que todavía no puede producir.
 
+### Cuando un error se repite
+
+Si una categoría aparece **dos veces o más** y todavía no tiene imagen, la pasada de revisión pide un **mnemónico estilo Ramón Campayo**: una palabra clave que suene parecido más una imagen absurda y exagerada, en tu idioma. Se muestra debajo de la corrección y se guarda para no reinventarlo cada turno:
+
+```
+  ✎ "go" → "went"  (El verbo debe estar en pasado porque dice 'yesterday'.)
+  ✧ Imagina que el verbo 'go' se rompe y cae al suelo, convirtiéndose en 'went'.
+```
+
+El mnemónico queda en tu perfil como `mnemonic-<categoría>` y el tutor lo recibe en un bloque aparte del prompt, para reusar la misma imagen si el tema vuelve. `/status` los lista en su propia línea (`mnemónicos:`), separados de los datos personales.
+
 Límites: es una guía, no una medición. La app no detecta tu nivel ni te promociona sola; lo cambiás vos con `/level`. Si el nivel guardado no está en la tabla (un perfil viejo), el prompt usa solo la letra y nada más.
 
 ## Voz

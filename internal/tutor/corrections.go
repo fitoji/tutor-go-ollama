@@ -15,6 +15,9 @@ type Correction struct {
 	Better   string `json:"better"`
 	Category string `json:"category"`
 	Note     string `json:"note"`
+	// Mnemonic is a Campayo-style image for a trouble spot that keeps coming
+	// back. Empty for a first mistake: it is not a pattern yet.
+	Mnemonic string `json:"mnemonic,omitempty"`
 }
 
 // Review is one structured pass over the learner's message: what to correct,
@@ -60,10 +63,45 @@ func policyFor(level string) correctionPolicy {
 	}
 }
 
+// troubleSpot is a mistake category the learner keeps repeating.
+type troubleSpot struct {
+	Category string
+	Count    int
+}
+
+func (s troubleSpot) String() string { return fmt.Sprintf("%s (%d times)", s.Category, s.Count) }
+
+// mnemonicKey is the fact key that holds the image for a category, or "" when
+// the category is too long to fit one.
+func mnemonicKey(category string) string {
+	return conv.NormalizeFactKey(conv.MnemonicPrefix + category)
+}
+
+// repeatedTroubleSpots lists what the learner keeps getting wrong and still has
+// no mnemonic for. A category seen once is not a pattern, and one that already
+// has an image is not asked again.
+func repeatedTroubleSpots(d conv.Data) []troubleSpot {
+	var out []troubleSpot
+	for _, k := range d.TopMistakes(6) {
+		if d.Profile.Mistakes[k] < 2 {
+			continue
+		}
+		key := mnemonicKey(k)
+		if key == "" || d.Profile.Facts[key] != "" {
+			continue
+		}
+		out = append(out, troubleSpot{Category: k, Count: d.Profile.Mistakes[k]})
+		if len(out) == 3 {
+			break
+		}
+	}
+	return out
+}
+
 // correctionSystem builds the review prompt. The JSON shape is spelled out
 // because OpenAI-compatible providers only offer JSON mode (no schema), and
 // JSON mode requires the word "JSON".
-func correctionSystem(level string, p correctionPolicy, notesLang string) string {
+func correctionSystem(level string, p correctionPolicy, notesLang string, spots []troubleSpot) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are an English teacher reviewing ONE message written by a learner at CEFR level %s.\n", level)
 	b.WriteString(p.Rules + "\n")
@@ -72,14 +110,22 @@ func correctionSystem(level string, p correctionPolicy, notesLang string) string
 	b.WriteString("Also list the durable facts the learner states about themselves, each as \"key\" and \"value\".\n")
 	b.WriteString("Use the keys name, country, city and hobby for those four; any other lasting fact (job, family, plans) gets a short lowercase key of your own.\n")
 	b.WriteString("Only facts written in the message: never invent one, never reuse an example from these instructions, and keep their words.\n")
+	if len(spots) > 0 {
+		parts := make([]string, len(spots))
+		for i, sp := range spots {
+			parts[i] = sp.String()
+		}
+		fmt.Fprintf(&b, "The learner keeps getting these wrong: %s.\n", strings.Join(parts, ", "))
+		fmt.Fprintf(&b, "For a correction whose category is one of those, also add \"mnemonic\": a Ramón Campayo memory image in %s — a keyword that sounds like the right form plus one absurd, exaggerated, moving image, at most 20 words. Leave it empty for any other category.\n", notesLang)
+	}
 	if p.Rewrite {
 		b.WriteString("Also add \"rewrite\": the whole message as a native speaker would write it, keeping the learner's meaning and detail, in one sentence.\n")
 		b.WriteString("Answer with a JSON object and nothing else, in exactly this shape:\n")
-		b.WriteString("{\"corrections\":[{\"original\":\"...\",\"better\":\"...\",\"category\":\"...\",\"note\":\"...\"}],\"facts\":[{\"key\":\"...\",\"value\":\"...\"}],\"rewrite\":\"...\"}\n")
+		b.WriteString("{\"corrections\":[{\"original\":\"...\",\"better\":\"...\",\"category\":\"...\",\"note\":\"...\",\"mnemonic\":\"...\"}],\"facts\":[{\"key\":\"...\",\"value\":\"...\"}],\"rewrite\":\"...\"}\n")
 		b.WriteString("Never a bare list: with nothing to report, answer {\"corrections\":[],\"facts\":[],\"rewrite\":\"\"}.\n")
 	} else {
 		b.WriteString("Answer with a JSON object and nothing else, in exactly this shape:\n")
-		b.WriteString("{\"corrections\":[{\"original\":\"...\",\"better\":\"...\",\"category\":\"...\",\"note\":\"...\"}],\"facts\":[{\"key\":\"...\",\"value\":\"...\"}]}\n")
+		b.WriteString("{\"corrections\":[{\"original\":\"...\",\"better\":\"...\",\"category\":\"...\",\"note\":\"...\",\"mnemonic\":\"...\"}],\"facts\":[{\"key\":\"...\",\"value\":\"...\"}]}\n")
 		b.WriteString("Never a bare list: with nothing to report, answer {\"corrections\":[],\"facts\":[]}.\n")
 	}
 	b.WriteString("Inside a value, never use double quotes: write the words plainly, without quoting them.")
@@ -97,7 +143,8 @@ var correctionSchema = json.RawMessage(`{
           "original": {"type": "string"},
           "better":   {"type": "string"},
           "category": {"type": "string"},
-          "note":     {"type": "string"}
+          "note":     {"type": "string"},
+          "mnemonic": {"type": "string"}
         },
         "required": ["original", "better", "category", "note"]
       }
@@ -132,7 +179,11 @@ func (t *Tutor) Correct(ctx context.Context, text string) (Review, error) {
 		level = t.store.Level()
 	}
 	policy := policyFor(level)
-	raw, err := t.chat(ctx, t.correctionRequest(text, level, policy))
+	var spots []troubleSpot
+	if t.store != nil {
+		spots = repeatedTroubleSpots(t.store.View())
+	}
+	raw, err := t.chat(ctx, t.correctionRequest(text, level, policy, spots))
 	if err != nil {
 		return Review{}, err
 	}
@@ -146,6 +197,24 @@ func (t *Tutor) Correct(ctx context.Context, text string) (Review, error) {
 	// The native rewrite is a C1/C2 feature: never hand one to a beginner.
 	if !policy.Rewrite {
 		rev.Rewrite = ""
+	}
+	// A mnemonic is only kept for a trouble spot we asked about, and it is
+	// stored so the next turns can reuse the same image.
+	asked := map[string]bool{}
+	for _, sp := range spots {
+		asked[strings.ToLower(sp.Category)] = true
+	}
+	var mnemonicFacts []Fact
+	for i := range rev.Corrections {
+		c := &rev.Corrections[i]
+		c.Mnemonic = strings.TrimSpace(c.Mnemonic)
+		if c.Mnemonic == "" || !asked[strings.ToLower(c.Category)] {
+			c.Mnemonic = ""
+			continue
+		}
+		if key := mnemonicKey(c.Category); key != "" {
+			mnemonicFacts = append(mnemonicFacts, Fact{Key: key, Value: c.Mnemonic})
+		}
 	}
 
 	var changed []string
@@ -165,6 +234,10 @@ func (t *Tutor) Correct(ctx context.Context, text string) (Review, error) {
 		}
 		for _, f := range rev.Facts {
 			record(f.Key, f.Value)
+		}
+		// The image is stored silently: the ✧ line already showed it.
+		for _, f := range mnemonicFacts {
+			d.SetFact(f.Key, f.Value)
 		}
 		// Safety net for the first turn: an introduction is the one fact worth
 		// catching when the model returns nothing, but a known name wins.
@@ -193,9 +266,9 @@ func (t *Tutor) Correct(ctx context.Context, text string) (Review, error) {
 // correctionRequest builds the review request for a level and its policy.
 // ProbeCorrections reuses it so that --selftest probes exactly what production
 // sends for a new learner.
-func (t *Tutor) correctionRequest(text, level string, p correctionPolicy) llm.Request {
+func (t *Tutor) correctionRequest(text, level string, p correctionPolicy, spots []troubleSpot) llm.Request {
 	msgs := []llm.Message{
-		{Role: "system", Content: correctionSystem(level, p, t.st.NotesLang)},
+		{Role: "system", Content: correctionSystem(level, p, t.st.NotesLang, spots)},
 		{Role: "user", Content: "Learner message: " + text},
 	}
 	req := t.request(msgs, 0, p.Tokens)
@@ -208,7 +281,7 @@ func (t *Tutor) correctionRequest(text, level string, p correctionPolicy) llm.Re
 // without polluting the learner profile.
 func ProbeCorrections(ctx context.Context, lm llm.Chatter, st Settings) ([]Correction, error) {
 	t := New(lm, nil, st) // this path never uses the store
-	raw, err := t.chat(ctx, t.correctionRequest(ProbeSample, "B1", policyFor("B1")))
+	raw, err := t.chat(ctx, t.correctionRequest(ProbeSample, "B1", policyFor("B1"), nil))
 	if err != nil {
 		return nil, err
 	}
