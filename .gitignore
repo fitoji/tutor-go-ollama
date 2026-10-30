@@ -1,2 +1,4 @@
 # Binario que genera el README: go build -o speakeasy ./cmd/speakeasy
 /speakeasy
+# Local AI runtime state
+.atl/
