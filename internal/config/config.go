@@ -24,7 +24,8 @@ type Config struct {
 	NotesLang   string // language of the short correction notes
 	StatePath   string
 	Mute        bool
-	MemLimitMiB int // soft Go heap limit
+	MemLimitMiB int  // soft Go heap limit
+	SelfTest    bool // check the configured providers and exit
 
 	APIBase   string // OpenAI-compatible base URL (remote providers)
 	APIKeyEnv string // name of the environment variable holding the key
@@ -105,6 +106,7 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.StatePath, "state", filepath.Join(home, ".speakeasy", "state.json"), "state file")
 	fs.BoolVar(&c.Mute, "mute", false, "text only, no voice")
 	fs.IntVar(&c.MemLimitMiB, "mem-limit", 256, "soft memory limit for this process, in MiB")
+	fs.BoolVar(&c.SelfTest, "selftest", false, "check the configured chat, corrections and voice, then exit")
 	if err := fs.Parse(args); err != nil {
 		return c, err
 	}

@@ -97,6 +97,28 @@ func TestOverridesAndValidation(t *testing.T) {
 	}
 }
 
+func TestSelfTestFlag(t *testing.T) {
+	clean(t)
+	t.Setenv("GROQ_API_KEY", "k")
+	c, err := Parse(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.SelfTest {
+		t.Error("selftest must be off by default")
+	}
+	c, err = Parse([]string{"--selftest"})
+	if err != nil || !c.SelfTest {
+		t.Errorf("--selftest not parsed: %+v %v", c, err)
+	}
+	// A selftest still needs a usable configuration, so a missing key fails
+	// before any probe runs.
+	clean(t)
+	if _, err := Parse([]string{"--selftest"}); err == nil || !strings.Contains(err.Error(), "GROQ_API_KEY") {
+		t.Errorf("a selftest without a key must explain what is missing: %v", err)
+	}
+}
+
 func TestNormalizeHost(t *testing.T) {
 	cases := map[string]string{
 		"":                       "http://127.0.0.1:11434",

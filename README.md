@@ -39,7 +39,18 @@ Ejemplos:
 
 Con un proveedor remoto **tus mensajes salen a un servidor externo** (la app lo recuerda al arrancar). Usa modelos sin razonamiento largo: los que «piensan» gastan el límite de tokens antes de contestar. Si el modelo emite bloques `<think>...</think>`, se descartan.
 
-Otras opciones (flag o variable): `--tts` / `SPEAKEASY_TTS`, `--voice`, `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false`, `--state`, `--host` (el Ollama que sirve la voz).
+Otras opciones (flag o variable): `--tts` / `SPEAKEASY_TTS`, `--voice`, `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false`, `--state`, `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo).
+
+### Antes de la primera sesión: `--selftest`
+
+```sh
+./speakeasy --selftest            # chat + correcciones + voz, según lo configurado
+./speakeasy --selftest --mute     # sin Ollama, solo chat y correcciones
+```
+
+Hace las mismas peticiones que la app en un turno real —versión de Ollama, modelo de voz presente, síntesis que devuelva PCM, un chat de una línea y una corrección en JSON— e imprime una línea por comprobación. Sale con código 1 si algo falla, así que sirve en un script. No toca tu conversación guardada ni descarga modelos de Ollama.
+
+La comprobación de correcciones manda una frase con un error obvio (*"Yesterday I go to the cinema with my friend"*); si el modelo no devuelve ninguna corrección, cuenta como fallo: el formato JSON se está ignorando y la función no sirve en la práctica.
 
 ## Cómo se cuida la memoria
 
@@ -86,10 +97,11 @@ internal/openai/     cliente de chat/completions con SSE (Groq, xAI, ...)
 internal/ollama/     cliente de Ollama: chat, voz, ps/unload/load
 internal/conv/       memoria: perfil, resumen, ventana de turnos, JSON en disco
 internal/tutor/      un turno: prompt, streaming, resumen rodante, correcciones
+internal/selftest/   comprobaciones de `--selftest` contra los servicios reales
 internal/speech/     frases -> síntesis -> reproducción (afplay en macOS)
 ```
 
-`go test -race ./...` cubre todo salvo `cmd/` y la reproducción real.
+`go test -race ./...` cubre todo salvo el bucle interactivo de `run` y la reproducción real por `afplay`. Incluye `cmd/speakeasy`: `prepare`, los comandos y `/status` se prueban contra un Ollama simulado.
 
 ## Próximo: hito 3, entrada por voz
 
@@ -97,7 +109,7 @@ Push-to-talk (mantener una tecla, grabar, transcribir, enviar), sin VAD ni inter
 
 ## Sin verificar
 
-Se probó con servidores simulados (Ollama y compatible con OpenAI) en Linux. **No se ha probado con Groq, xAI, Ollama ni Phonon reales, ni el audio por `afplay` en macOS.** Puntos a confirmar la primera vez:
+Se probó con servidores simulados (Ollama y compatible con OpenAI) en Linux. **No se ha probado con Groq, xAI, Ollama ni Phonon reales, ni el audio por `afplay` en macOS.** Corré `./speakeasy --selftest` antes de la primera sesión: comprueba contra los servicios reales todo lo de esta lista salvo el audio. Puntos a confirmar:
 
 - Que Groq acepta `max_tokens`, el modo JSON (`response_format: json_object`) con tu modelo y el streaming tal como lo implementa el cliente (el uso de tokens se lee de `usage` o `x_groq.usage`; si no llega, `/status` lo indica).
 - Que el modelo elegido cumple el formato JSON de las correcciones; si no, verás `[correcciones] could not read corrections`.

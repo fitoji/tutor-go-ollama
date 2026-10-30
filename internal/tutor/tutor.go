@@ -104,6 +104,28 @@ func (t *Tutor) chat(ctx context.Context, req llm.Request) (string, error) {
 	return sb.String(), err
 }
 
+// ProbeReply sends one minimal message through the same path a turn uses,
+// including the think-field fallback, and returns the reply and the prompt
+// size the provider reported (0 if it did not). It never touches the store,
+// so --selftest can run it against a real provider safely.
+func ProbeReply(ctx context.Context, lm llm.Chatter, st Settings) (string, int, error) {
+	t := New(lm, nil, st) // this path never uses the store
+	req := t.request([]llm.Message{{Role: "user", Content: "Reply with the single word: ready"}}, 0, 16)
+	var sb strings.Builder
+	stats, err := t.stream(ctx, req, func(d string) error {
+		sb.WriteString(d)
+		return nil
+	})
+	if err != nil {
+		return "", 0, err
+	}
+	reply := strings.TrimSpace(sb.String())
+	if reply == "" {
+		return "", stats.PromptTokens, errors.New("the model returned an empty reply")
+	}
+	return reply, stats.PromptTokens, nil
+}
+
 func toMessages(turns []conv.Turn) []llm.Message {
 	out := make([]llm.Message, len(turns))
 	for i, t := range turns {

@@ -55,16 +55,56 @@ func (t *Tutor) Correct(ctx context.Context, text string) ([]Correction, error) 
 	if len(strings.Fields(text)) < 2 {
 		return nil, nil
 	}
+	raw, err := t.chat(ctx, t.correctionRequest(text))
+	if err != nil {
+		return nil, err
+	}
+	out, err := parseCorrections(raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(out) > 0 {
+		err = t.store.Update(func(d *conv.Data) {
+			for _, c := range out {
+				d.RecordMistake(c.Category)
+			}
+		})
+	}
+	return out, err
+}
+
+// correctionRequest builds the request Correct sends. ProbeCorrections reuses
+// it so that --selftest probes exactly what production sends.
+func (t *Tutor) correctionRequest(text string) llm.Request {
 	msgs := []llm.Message{
 		{Role: "system", Content: fmt.Sprintf(correctionPrompt, t.st.NotesLang)},
 		{Role: "user", Content: "Learner message: " + text},
 	}
 	req := t.request(msgs, 0, 300)
 	req.JSONSchema = correctionSchema
-	raw, err := t.chat(ctx, req)
+	return req
+}
+
+// ProbeCorrections sends the correction request for a knowingly wrong sample
+// and reports what came back. It never touches the store, so --selftest can
+// run it without polluting the learner profile.
+func ProbeCorrections(ctx context.Context, lm llm.Chatter, st Settings) ([]Correction, error) {
+	t := New(lm, nil, st) // this path never uses the store
+	raw, err := t.chat(ctx, t.correctionRequest(ProbeSample))
 	if err != nil {
 		return nil, err
 	}
+	return parseCorrections(raw)
+}
+
+// ProbeSample is the sentence the correction probe sends: it has one
+// unmistakable mistake (past simple), so an empty answer means the model is
+// not following the correction prompt.
+const ProbeSample = "Yesterday I go to the cinema with my friend."
+
+// parseCorrections validates the model's answer, drops entries that are not a
+// real change and keeps at most maxCorrections.
+func parseCorrections(raw string) ([]Correction, error) {
 	var parsed struct {
 		Corrections []Correction `json:"corrections"`
 	}
@@ -82,14 +122,7 @@ func (t *Tutor) Correct(ctx context.Context, text string) ([]Correction, error) 
 			break
 		}
 	}
-	if len(out) > 0 {
-		err = t.store.Update(func(d *conv.Data) {
-			for _, c := range out {
-				d.RecordMistake(c.Category)
-			}
-		})
-	}
-	return out, err
+	return out, nil
 }
 
 // extractJSON tolerates models that wrap the object in a code fence or add a

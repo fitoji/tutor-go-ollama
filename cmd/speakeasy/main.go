@@ -21,6 +21,7 @@ import (
 	"speakeasy/internal/llm"
 	"speakeasy/internal/ollama"
 	"speakeasy/internal/openai"
+	"speakeasy/internal/selftest"
 	"speakeasy/internal/speech"
 	"speakeasy/internal/tutor"
 )
@@ -49,29 +50,28 @@ func run() error {
 
 	// Ollama always hosts the voice; it hosts the chat model only locally.
 	cl := ollama.New(cfg.Host)
-	if err := prepare(ctx, cl, cfg); err != nil {
-		return err
+	chat := newChatter(cfg, cl)
+
+	// --selftest probes the real providers and exits before touching the
+	// stored conversation or unloading anything from Ollama.
+	if cfg.SelfTest {
+		return selftest.Run(ctx, os.Stdout, selftest.Env{
+			Cfg:      cfg,
+			Ollama:   cl,
+			Chat:     chat,
+			Settings: settingsFor(cfg),
+		})
 	}
 
-	var chat llm.Chatter
-	if cfg.Remote() {
-		chat = openai.New(cfg.APIBase, cfg.APIKey)
-	} else {
-		chat = ollama.Chatter{C: cl}
+	if err := prepare(ctx, cl, cfg); err != nil {
+		return err
 	}
 
 	store, err := conv.Open(cfg.StatePath)
 	if err != nil {
 		return err
 	}
-	tut := tutor.New(chat, store, tutor.Settings{
-		Model:      cfg.LLM,
-		NumCtx:     cfg.NumCtx,
-		KeepAlive:  cfg.KeepAlive,
-		Think:      cfg.Think,
-		ThinkField: !cfg.Remote(),
-		NotesLang:  cfg.NotesLang,
-	})
+	tut := tutor.New(chat, store, settingsFor(cfg))
 
 	var spk *speech.Speaker
 	if !cfg.Mute {
@@ -190,6 +190,28 @@ func run() error {
 	}
 	finish()
 	return nil
+}
+
+// newChatter picks the client for the configured provider. run, prepare and
+// --selftest all go through it, so a probe always exercises the same client.
+func newChatter(cfg config.Config, cl *ollama.Client) llm.Chatter {
+	if cfg.Remote() {
+		return openai.New(cfg.APIBase, cfg.APIKey)
+	}
+	return ollama.Chatter{C: cl}
+}
+
+// settingsFor turns the config into tutor settings. Shared by the real turn
+// loop and by --selftest so the probes cannot drift from production.
+func settingsFor(cfg config.Config) tutor.Settings {
+	return tutor.Settings{
+		Model:      cfg.LLM,
+		NumCtx:     cfg.NumCtx,
+		KeepAlive:  cfg.KeepAlive,
+		Think:      cfg.Think,
+		ThinkField: !cfg.Remote(),
+		NotesLang:  cfg.NotesLang,
+	}
 }
 
 func ttsLabel(cfg config.Config, spk *speech.Speaker) string {
