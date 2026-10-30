@@ -107,15 +107,17 @@ func TestWAVHeader(t *testing.T) {
 }
 
 type fakeSynth struct {
-	mu    sync.Mutex
-	calls []string
-	delay time.Duration
-	fail  map[string]bool
+	mu     sync.Mutex
+	calls  []string
+	voices []string
+	delay  time.Duration
+	fail   map[string]bool
 }
 
 func (f *fakeSynth) Speech(ctx context.Context, model, voice, input string) ([]byte, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, input)
+	f.voices = append(f.voices, voice)
 	f.mu.Unlock()
 	select {
 	case <-time.After(f.delay):
@@ -260,5 +262,34 @@ func TestSayAppliesBackpressure(t *testing.T) {
 	// playing(1) + pcm queue(1) + in synthesis(1) + text queue(8) + slack
 	if n := accepted.Load(); n > 14 {
 		t.Errorf("%d sentences accepted with a stalled player: queue is not bounded", n)
+	}
+}
+
+// TestSetVoiceAppliesToTheNextSentence is the runtime half of the voice switch:
+// audio already queued keeps its voice, the next utterance uses the new one.
+func TestSetVoiceAppliesToTheNextSentence(t *testing.T) {
+	syn := &fakeSynth{delay: time.Millisecond}
+	sp := NewSpeaker(syn, &fakePlayer{}, "phonon", "Freya", nil)
+
+	u := sp.Begin()
+	u.Say("First sentence here.")
+	u.Finish()
+	u.Wait()
+
+	sp.SetVoice("Spencer")
+	if got := sp.Voice(); got != "Spencer" {
+		t.Errorf("Voice = %q", got)
+	}
+
+	u = sp.Begin()
+	u.Say("Second sentence here.")
+	u.Finish()
+	u.Wait()
+
+	syn.mu.Lock()
+	got := append([]string(nil), syn.voices...)
+	syn.mu.Unlock()
+	if len(got) != 2 || got[0] != "Freya" || got[1] != "Spencer" {
+		t.Errorf("voices used = %v, want [Freya Spencer]", got)
 	}
 }

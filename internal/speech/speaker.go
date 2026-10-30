@@ -14,17 +14,35 @@ type Synth interface {
 // the previous one first, so typing while the tutor is still talking simply
 // interrupts it.
 type Speaker struct {
-	synth   Synth
-	player  Player
-	model   string
+	synth  Synth
+	player Player
+	model  string
+	onErr  func(error)
+	mu     sync.Mutex
+	// vmu guards only the voice, so changing it can never deadlock against
+	// Begin/Stop, which hold mu while waiting for the current utterance.
+	vmu     sync.Mutex
 	voice   string
-	onErr   func(error)
-	mu      sync.Mutex
 	current *Utterance
 }
 
 func NewSpeaker(s Synth, p Player, model, voice string, onErr func(error)) *Speaker {
 	return &Speaker{synth: s, player: p, model: model, voice: voice, onErr: onErr}
+}
+
+// SetVoice changes the voice used from the next sentence on. Audio already
+// queued keeps the voice it was synthesized with.
+func (sp *Speaker) SetVoice(v string) {
+	sp.vmu.Lock()
+	sp.voice = v
+	sp.vmu.Unlock()
+}
+
+// Voice returns the voice in use, which may be empty (the model default).
+func (sp *Speaker) Voice() string {
+	sp.vmu.Lock()
+	defer sp.vmu.Unlock()
+	return sp.voice
 }
 
 // Begin stops whatever is playing and returns a fresh utterance.
@@ -98,7 +116,7 @@ func (u *Utterance) synthesize() {
 			if !ok {
 				return
 			}
-			b, err := u.sp.synth.Speech(u.ctx, u.sp.model, u.sp.voice, s)
+			b, err := u.sp.synth.Speech(u.ctx, u.sp.model, u.sp.Voice(), s)
 			if err != nil {
 				u.fail(err)
 				continue

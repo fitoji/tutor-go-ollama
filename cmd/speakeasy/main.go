@@ -201,7 +201,7 @@ func run() error {
 			finish()
 			return nil
 		case strings.HasPrefix(line, "/"):
-			command(ctx, line, cl, cfg, store, tut)
+			command(ctx, line, cl, cfg, store, tut, spk)
 		default:
 			runTurn(line)
 		}
@@ -296,6 +296,9 @@ func ttsLabel(cfg config.Config, spk *speech.Speaker) string {
 	if cfg.Mute || spk == nil {
 		return "off"
 	}
+	if v := spk.Voice(); v != "" {
+		return cfg.TTS + "/" + v
+	}
 	return cfg.TTS
 }
 
@@ -375,7 +378,7 @@ func ours(name string, need []string) bool {
 
 func gib(b int64) float64 { return float64(b) / (1 << 30) }
 
-func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Config, store *conv.Store, tut *tutor.Tutor) {
+func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Config, store *conv.Store, tut *tutor.Tutor, spk *speech.Speaker) {
 	fields := strings.Fields(line)
 	arg := strings.TrimSpace(strings.TrimPrefix(line, fields[0]))
 	switch fields[0] {
@@ -384,6 +387,7 @@ func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Con
 /level B1     cambiar tu nivel (A1 a C2)
 /topic X      añadir un tema de interés
 /forget clave olvidar un dato que el tutor guardó (ej: /forget city)
+/voice femenina  cambiar la voz (femenina, masculina o un nombre de ollama show phonon)
 /status       modelo, memoria usada y estado de la conversación
 /quit         salir`)
 	case "/reset":
@@ -418,6 +422,26 @@ func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Con
 			fmt.Printf("olvidado: %s\n", conv.NormalizeFactKey(arg))
 		} else {
 			fmt.Printf("no tenía nada guardado con la clave %q\n", arg)
+		}
+	case "/voice":
+		if spk == nil {
+			fmt.Println("estás sin voz: arrancaste con --mute")
+			return
+		}
+		if arg == "" {
+			cur := spk.Voice()
+			if cur == "" {
+				cur = "la del modelo"
+			}
+			fmt.Printf("voz: %s · usa /voice femenina, /voice masculina o un nombre\n", cur)
+			return
+		}
+		v := speech.ResolveVoice(arg)
+		spk.SetVoice(v)
+		if v != strings.TrimSpace(arg) {
+			fmt.Printf("voz: %s (%s)\n", v, strings.ToLower(strings.TrimSpace(arg)))
+		} else {
+			fmt.Printf("voz: %s\n", v)
 		}
 	case "/status":
 		status(ctx, cl, cfg, store, tut)

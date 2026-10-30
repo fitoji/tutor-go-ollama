@@ -167,3 +167,26 @@ func TestNormalizeHost(t *testing.T) {
 		}
 	}
 }
+
+// TestVoiceAliases pins the short names people actually type, while an exact
+// Phonon voice name keeps working.
+func TestVoiceAliases(t *testing.T) {
+	clean(t)
+	t.Setenv("GROQ_API_KEY", "k")
+	c, err := Parse([]string{"--voice", "femenina"})
+	if err != nil || c.Voice != "Freya" {
+		t.Errorf("--voice femenina: %+v %v", c, err)
+	}
+	c, err = Parse([]string{"--voice", "M"})
+	if err != nil || c.Voice != "Spencer" {
+		t.Errorf("--voice M: %+v %v", c, err)
+	}
+	c, err = Parse([]string{"--voice", "Harper"})
+	if err != nil || c.Voice != "Harper" {
+		t.Errorf("--voice Harper: %+v %v", c, err)
+	}
+	t.Setenv("SPEAKEASY_VOICE", "masculina")
+	if c, err := Parse(nil); err != nil || c.Voice != "Spencer" {
+		t.Errorf("voice from env: %+v %v", c, err)
+	}
+}

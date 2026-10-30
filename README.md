@@ -19,7 +19,7 @@ Escribes en inglés (o en español; el tutor siempre responde en inglés). Mient
 
 Al arrancar te pregunta quién sos (`usuario:`); con Enter mantiene el último. Cada nombre guarda su propio nivel y sus propios errores, así que dos personas pueden compartir la máquina sin pisarse el perfil (ver [Un perfil por persona](#un-perfil-por-persona)).
 
-Comandos: `/reset`, `/level B2`, `/topic cine`, `/forget city`, `/status`, `/quit`.
+Comandos: `/reset`, `/level B2`, `/topic cine`, `/forget city`, `/voice femenina`, `/status`, `/quit`.
 
 ## Proveedores
 
@@ -41,7 +41,7 @@ Ejemplos:
 
 Con un proveedor remoto **tus mensajes salen a un servidor externo** (la app lo recuerda al arrancar). Usa modelos sin razonamiento largo: los que «piensan» gastan el límite de tokens antes de contestar. Si el modelo emite bloques `<think>...</think>`, se descartan.
 
-Otras opciones (flag o variable): `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice`, `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false` (oculta los `✎`; la pasada de revisión sigue guardando datos), `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo).
+Otras opciones (flag o variable): `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice` (femenina, masculina o un nombre exacto), `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false` (oculta los `✎`; la pasada de revisión sigue guardando datos), `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo).
 
 ### Antes de la primera sesión: `--selftest`
 
@@ -158,6 +158,28 @@ La diferencia se nota. Con el mismo mensaje (*"I would like to talk about the im
 **Las correcciones también respetan el nivel.** La pasada de revisión recibe tu nivel y lo juzga contra lo que se espera de él: no marca una frase simple pero correcta, y no te empuja estructuras por encima. Un error de un nivel superior solo aparece si hace difícil entender la frase.
 
 Límites: es una guía, no una medición. La app no detecta tu nivel ni te promociona sola; lo cambiás vos con `/level`. Si el nivel guardado no está en la tabla (un perfil viejo), el prompt usa solo la letra y nada más.
+
+## Voz
+
+La voz la sirve Phonon desde Ollama. `--voice` acepta dos atajos o el nombre exacto de una voz:
+
+```sh
+./speakeasy --voice femenina     # Freya, ~183 Hz
+./speakeasy --voice masculina    # Spencer, ~110 Hz
+./speakeasy --voice Harper       # nombre exacto (ver `ollama show phonon`)
+```
+
+Sin `--voice` suena la voz por defecto del modelo: masculina, ~108 Hz.
+
+Los atajos no son nombres adivinados: sinteticé una muestra con las 38 voces de Phonon y medí el tono fundamental. Las femeninas quedan entre 170 y 210 Hz y las masculinas entre 78 y 158 Hz, así que el corte es claro.
+
+En plena sesión: `/voice femenina`, `/voice masculina` o `/voice <nombre>`; `/voice` a secas muestra la que está sonando.
+
+```
+voz: Freya · usa /voice femenina, /voice masculina o un nombre
+```
+
+El cambio vale desde la frase siguiente (lo que ya está en la cola conserva su voz) y **no se guarda**: para que sea permanente, pasá el flag.
 
 ## Correcciones y perfil del alumno
 

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"speakeasy/internal/speech"
 )
 
 type Config struct {
@@ -121,6 +123,9 @@ func Parse(args []string) (Config, error) {
 		}
 	})
 	c.User = strings.TrimSpace(c.User)
+	// "femenina" / "masculina" pick a measured Phonon voice; any other value is
+	// an exact voice name.
+	c.Voice = speech.ResolveVoice(c.Voice)
 
 	c.Provider = strings.ToLower(strings.TrimSpace(c.Provider))
 	p, ok := presets[c.Provider]
