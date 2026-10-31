@@ -41,7 +41,7 @@ Ejemplos:
 
 Con un proveedor remoto **tus mensajes salen a un servidor externo** (la app lo recuerda al arrancar). Usa modelos sin razonamiento largo: los que «piensan» gastan el límite de tokens antes de contestar. Si el modelo emite bloques `<think>...</think>`, se descartan.
 
-Otras opciones (flag o variable): `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice` (femenina, masculina o un nombre exacto), `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false` (oculta los `✎`; la pasada de revisión sigue guardando datos), `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo).
+Otras opciones (flag o variable): `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice` (femenina, masculina o un nombre exacto), `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false` (oculta los `✎`; la pasada de revisión sigue guardando datos), `--persona` (archivo que cambia la voz del tutor), `--review-persona` (archivo que cambia el tono de las correcciones), `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo).
 
 ### Antes de la primera sesión: `--selftest`
 
@@ -187,7 +187,7 @@ Con `--stt whisper` el audio **no sale de la máquina**: se escribe un WAV tempo
 
 `/level` acepta la escala completa (A1, A2, B1, B2, C1, C2) y el nivel se guarda en tu perfil: es tuyo, no de la máquina. Arranca en B1 y `/reset` no lo toca.
 
-Una letra sola no le dice nada al modelo, así que el system prompt lleva el perfil de ese nivel: vocabulario objetivo, qué puede hacer, qué gramática ya controla y de qué temas conviene hablar.
+Una letra sola no le dice nada al modelo, así que el system prompt lleva el perfil de ese nivel: vocabulario objetivo, qué puede hacer, qué gramática ya controla, de qué temas conviene hablar y **cuántas frases** debe tener la respuesta (A1-A2: 1-2; B1-B2: 2-3; C1-C2: 3-5).
 
 | Nivel | Vocabulario | Ejemplo de lo que ya controla |
 |---|---|---|
@@ -259,6 +259,55 @@ voz: Freya · usa /voice femenina, /voice masculina o un nombre
 ```
 
 El cambio vale desde la frase siguiente (lo que ya está en la cola conserva su voz) y **no se guarda**: para que sea permanente, pasá el flag.
+
+## La voz del tutor: persona editable
+
+El comportamiento del tutor se parte en dos: **reglas fijas** (texto plano para que el TTS no lea asteriscos, no corregir dentro de la respuesta, responder en inglés, no pasar de 45 palabras) y **estilo**, que es editable.
+
+`--persona <archivo>` reemplaza el estilo. Por defecto mira `~/.speakeasy/tutor.md`; si no existe, usa el de fábrica. Todo lo que esté arriba de una línea `---` es documentación para vos: el modelo no lo ve.
+
+```md
+# Mi tutor
+
+> Cómo se usa esto.
+
+---
+You are a warm, patient and straightforward tutor.
+No grammar lectures: correct in the flow, never explain a rule unless asked.
+```
+
+Lo que **no** podés cambiar: las reglas fijas. Si las pisaras, se rompería el audio (el TTS leería el markdown) o las correcciones (el tutor empezaría a corregir en voz alta). Los datos —nivel, hechos, mnemónicos, resumen— se agregan siempre.
+
+### Ejemplo: tutor full slang americano
+
+Hay uno listo en `personas/slang-americano.md`:
+
+```sh
+./speakeasy --provider ollama --llm qwen3.5:9b --persona personas/slang-americano.md
+```
+
+Con el mismo mensaje que siempre:
+
+> **tutor>** Hey Fito! It's going great, just chillin' on my porch right now. Going to the movies totally slaps way better than cooped up at home lowkey. What did you see over there that got you so hyped?
+>
+> ✎ "I have went" → "I went" · ✎ "more better" → "better"
+> ↻ I went to the cinema yesterday and it was better than staying home.
+
+El slang cambia la voz, no las correcciones: siguen saliendo con el nivel y la exigencia de siempre.
+
+### Correcciones con chicana
+
+La pasada de correcciones tiene **su propia persona**: `--review-persona`. Son dos prompts distintos, así que un tutor gracioso puede corregir en serio, y un tutor serio puede cargarte.
+
+```sh
+./speakeasy --persona personas/slang-americano.md \
+            --review-persona personas/slang-americano-review.md
+```
+
+> ✎ "I have went" → "I went"  (Otra vez con el presente perfecto y 'went'? El pasado simple te odia, pero tú lo amas.)
+> ✧ Imagina que 'went' es un fantasma que huye del presente perfecto.
+
+La nota sigue diciendo qué está mal: la broma va **encima** de la explicación, nunca en lugar de ella, y el prompt prohíbe insultar a la persona (solo al error). Como las notas se imprimen y no se hablan, la chicana no entra al audio.
 
 ## Correcciones y perfil del alumno
 

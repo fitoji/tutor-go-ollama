@@ -15,22 +15,24 @@ import (
 )
 
 type Config struct {
-	Host        string // Ollama base URL (also hosts the voice model)
-	Provider    string // ollama, groq, xai or custom
-	LLM         string // chat model
-	TTS         string // speech model (always served by Ollama)
-	Voice       string
-	NumCtx      int    // prompt budget in tokens; for Ollama also its num_ctx
-	KeepAlive   string // how long Ollama keeps the LLM loaded
-	Think       bool   // allow thinking mode (Ollama only)
-	Corrections bool   // run the correction pass
-	NotesLang   string // language of the short correction notes
-	User        string // learner name (empty = ask at startup)
-	StatePath   string // state file, or the base path each learner derives from
-	StateSet    bool   // true when --state named an exact file
-	Mute        bool
-	MemLimitMiB int  // soft Go heap limit
-	SelfTest    bool // check the configured providers and exit
+	Host          string // Ollama base URL (also hosts the voice model)
+	Provider      string // ollama, groq, xai or custom
+	LLM           string // chat model
+	TTS           string // speech model (always served by Ollama)
+	Voice         string
+	NumCtx        int    // prompt budget in tokens; for Ollama also its num_ctx
+	KeepAlive     string // how long Ollama keeps the LLM loaded
+	Think         bool   // allow thinking mode (Ollama only)
+	Corrections   bool   // run the correction pass
+	NotesLang     string // language of the short correction notes
+	Persona       string // file that replaces the tutor's style
+	ReviewPersona string // file that sets the tone of the correction notes
+	User          string // learner name (empty = ask at startup)
+	StatePath     string // state file, or the base path each learner derives from
+	StateSet      bool   // true when --state named an exact file
+	Mute          bool
+	MemLimitMiB   int  // soft Go heap limit
+	SelfTest      bool // check the configured providers and exit
 
 	APIBase   string // OpenAI-compatible base URL (remote providers)
 	APIKeyEnv string // name of the environment variable holding the key
@@ -121,6 +123,8 @@ func Parse(args []string) (Config, error) {
 	fs.BoolVar(&c.Think, "think", false, "allow model thinking mode (ollama only)")
 	fs.BoolVar(&c.Corrections, "corrections", true, "show corrections after each turn (the review pass still runs: it also remembers facts)")
 	fs.StringVar(&c.NotesLang, "notes", envOr("SPEAKEASY_NOTES", "Spanish"), "language of correction notes")
+	fs.StringVar(&c.Persona, "persona", envOr("SPEAKEASY_PERSONA", filepath.Join(home, ".speakeasy", "tutor.md")), "file that replaces the tutor's style (missing = built-in)")
+	fs.StringVar(&c.ReviewPersona, "review-persona", envOr("SPEAKEASY_REVIEW_PERSONA", filepath.Join(home, ".speakeasy", "review.md")), "file that sets the tone of the correction notes (missing = neutral)")
 	fs.StringVar(&c.User, "user", envOr("SPEAKEASY_USER", ""), "learner name; each name keeps its own level and corrections (asks at startup when empty)")
 	fs.StringVar(&c.StatePath, "state", filepath.Join(home, ".speakeasy", "state.json"), "state file; without this flag each learner gets a directory next to it")
 	fs.BoolVar(&c.Mute, "mute", false, "text only, no voice")

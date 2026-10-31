@@ -650,3 +650,39 @@ func TestMnemonicIsAskedOnlyOnce(t *testing.T) {
 		t.Errorf("a category that already has a mnemonic must not be asked again:\n%s", sys)
 	}
 }
+
+// TestReviewPersonaSetsTheToneOfTheNotes pins the second persona: the tutor's
+// voice does not change the correction pass, a separate file does.
+func TestReviewPersonaSetsTheToneOfTheNotes(t *testing.T) {
+	f := &fakeOllama{json: `{"corrections":[],"facts":[]}`}
+	tut, _ := setup(t, f, 8192)
+	tut.st.ReviewPersona = "Roast them affectionately."
+
+	if _, err := tut.Correct(context.Background(), "I have went to the cinema"); err != nil {
+		t.Fatal(err)
+	}
+	sys := f.requests()[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
+	for _, want := range []string{"Roast them affectionately", "at most 16 words", "Tease the mistake, never the person"} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("the review prompt should contain %q:\n%s", want, sys)
+		}
+	}
+}
+
+// TestNoReviewPersonaKeepsTheNeutralNote keeps the default a teacher, not a
+// heckler.
+func TestNoReviewPersonaKeepsTheNeutralNote(t *testing.T) {
+	f := &fakeOllama{json: `{"corrections":[],"facts":[]}`}
+	tut, _ := setup(t, f, 8192)
+
+	if _, err := tut.Correct(context.Background(), "I have went to the cinema"); err != nil {
+		t.Fatal(err)
+	}
+	sys := f.requests()[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if strings.Contains(sys, "Tone for the notes") {
+		t.Errorf("a neutral review must not carry a tone block:\n%s", sys)
+	}
+	if !strings.Contains(sys, "at most 12 words") {
+		t.Errorf("the neutral note keeps its 12-word limit:\n%s", sys)
+	}
+}

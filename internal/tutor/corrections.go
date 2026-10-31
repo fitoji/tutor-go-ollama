@@ -101,12 +101,19 @@ func repeatedTroubleSpots(d conv.Data) []troubleSpot {
 // correctionSystem builds the review prompt. The JSON shape is spelled out
 // because OpenAI-compatible providers only offer JSON mode (no schema), and
 // JSON mode requires the word "JSON".
-func correctionSystem(level string, p correctionPolicy, notesLang string, spots []troubleSpot) string {
+func correctionSystem(level string, p correctionPolicy, notesLang string, spots []troubleSpot, reviewPersona string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are an English teacher reviewing ONE message written by a learner at CEFR level %s.\n", level)
 	b.WriteString(p.Rules + "\n")
 	b.WriteString("Ignore capitalization, punctuation and obvious typos. If the message is fine, return an empty list.\n")
-	fmt.Fprintf(&b, "For each mistake give \"original\" (the exact wrong fragment), \"better\" (the corrected fragment), \"category\" (two or three lowercase English words, e.g. \"past simple\", \"articles\", \"word order\") and \"note\" (at most 12 words, written in %s).\n", notesLang)
+	if tone := strings.TrimSpace(reviewPersona); tone != "" {
+		fmt.Fprintf(&b, "For each mistake give \"original\" (the exact wrong fragment), \"better\" (the corrected fragment), \"category\" (two or three lowercase English words, e.g. \"past simple\", \"articles\", \"word order\") and \"note\" (at most 16 words, written in %s).\n", notesLang)
+		b.WriteString("Tone for the notes:\n")
+		b.WriteString(tone + "\n")
+		b.WriteString("The note must still name what is wrong: the joke rides on the explanation, it never replaces it. Tease the mistake, never the person. No double quotes inside the note.\n")
+	} else {
+		fmt.Fprintf(&b, "For each mistake give \"original\" (the exact wrong fragment), \"better\" (the corrected fragment), \"category\" (two or three lowercase English words, e.g. \"past simple\", \"articles\", \"word order\") and \"note\" (at most 12 words, written in %s).\n", notesLang)
+	}
 	b.WriteString("Also list the durable facts the learner states about themselves, each as \"key\" and \"value\".\n")
 	b.WriteString("Use the keys name, country, city and hobby for those four; any other lasting fact (job, family, plans) gets a short lowercase key of your own.\n")
 	b.WriteString("Only facts written in the message: never invent one, never reuse an example from these instructions, and keep their words.\n")
@@ -268,7 +275,7 @@ func (t *Tutor) Correct(ctx context.Context, text string) (Review, error) {
 // sends for a new learner.
 func (t *Tutor) correctionRequest(text, level string, p correctionPolicy, spots []troubleSpot) llm.Request {
 	msgs := []llm.Message{
-		{Role: "system", Content: correctionSystem(level, p, t.st.NotesLang, spots)},
+		{Role: "system", Content: correctionSystem(level, p, t.st.NotesLang, spots, t.st.ReviewPersona)},
 		{Role: "user", Content: "Learner message: " + text},
 	}
 	req := t.request(msgs, 0, p.Tokens)

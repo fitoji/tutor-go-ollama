@@ -22,7 +22,7 @@ func dataWithTurns(n int, size int) Data {
 
 func TestBuildAlwaysStartsWithSystemAndKeepsNewestTurn(t *testing.T) {
 	d := dataWithTurns(41, 200) // ends on a user turn
-	msgs := Build(d, 2048, 256)
+	msgs := Build(d, "", 2048, 256)
 	if msgs[0].Role != "system" || !strings.Contains(msgs[0].Content, "conversation partner") {
 		t.Fatal("first message must be the tutor system prompt")
 	}
@@ -39,7 +39,7 @@ func TestBuildStaysWithinBudget(t *testing.T) {
 	for _, numCtx := range []int{2048, 4096, 8192} {
 		d := dataWithTurns(120, 300)
 		total := 0
-		for _, m := range Build(d, numCtx, 256) {
+		for _, m := range Build(d, "", numCtx, 256) {
 			total += EstimateTokens(m.Content) + 6
 		}
 		if total > numCtx-256 {
@@ -54,7 +54,7 @@ func TestBuildIncludesSummaryAndProfile(t *testing.T) {
 	d.Profile.Level = "B2"
 	d.AddTopic("hiking")
 	d.RecordMistake("past simple")
-	sys := Build(d, 4096, 256)[0].Content
+	sys := Build(d, "", 4096, 256)[0].Content
 	for _, want := range []string{"nurse planning a trip", "B2", "hiking", "past simple"} {
 		if !strings.Contains(sys, want) {
 			t.Errorf("system prompt lacks %q", want)
@@ -253,14 +253,14 @@ func TestSystemCarriesWhatTheTutorKnows(t *testing.T) {
 	d.SetFact("name", "Fito")
 	d.SetFact("city", "Madrid")
 
-	sys := System(d)
+	sys := System(d, "")
 	for _, want := range []string{"name: Fito", "city: Madrid", "country", "hobby"} {
 		if !strings.Contains(sys, want) {
 			t.Errorf("system prompt should mention %q:\n%s", want, sys)
 		}
 	}
 	// With nothing known the prompt must still invite the onboarding.
-	empty := System(Data{Profile: Profile{Level: "B1"}})
+	empty := System(Data{Profile: Profile{Level: "B1"}}, "")
 	if !strings.Contains(empty, "still do not know") || !strings.Contains(empty, "name") {
 		t.Errorf("an empty profile should ask who the learner is:\n%s", empty)
 	}
@@ -269,7 +269,7 @@ func TestSystemCarriesWhatTheTutorKnows(t *testing.T) {
 	for _, kv := range [][2]string{{"name", "Fito"}, {"country", "Argentina"}, {"city", "Madrid"}, {"hobby", "cooking"}} {
 		d.SetFact(kv[0], kv[1])
 	}
-	full := System(d)
+	full := System(d, "")
 	if strings.Contains(full, "still do not know") {
 		t.Errorf("a complete profile must not be sent back to onboarding:\n%s", full)
 	}
@@ -311,7 +311,7 @@ func TestSystemSeparatesMnemonicsFromFacts(t *testing.T) {
 	d.SetFact(MnemonicPrefix+"past-simple", "Un tren que ya pasó se aleja sin volver.")
 	d.SetFact(MnemonicPrefix+"articles", "Un artículo diminuto se pone el sombrero de 'an'.")
 
-	sys := System(d)
+	sys := System(d, "")
 	if !strings.Contains(sys, "Mnemonics") {
 		t.Errorf("mnemonics need their own section:\n%s", sys)
 	}

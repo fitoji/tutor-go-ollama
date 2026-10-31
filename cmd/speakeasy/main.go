@@ -56,6 +56,17 @@ func run() error {
 	cl := ollama.New(cfg.Host)
 	chat := newChatter(cfg, cl)
 
+	// The persona file replaces the tutor's style; a missing one is fine.
+	persona, perr := conv.LoadPersona(cfg.Persona)
+	if perr != nil {
+		fmt.Fprintf(os.Stderr, "aviso: no pude leer la persona %s: %v\n", cfg.Persona, perr)
+	}
+	reviewPersona, rerr := conv.LoadPersona(cfg.ReviewPersona)
+	if rerr != nil {
+		fmt.Fprintf(os.Stderr, "aviso: no pude leer la persona de correcciones %s: %v\n", cfg.ReviewPersona, rerr)
+	}
+	st := settingsFor(cfg, persona, reviewPersona)
+
 	// --selftest probes the real providers and exits before touching the
 	// stored conversation or unloading anything from Ollama.
 	if cfg.SelfTest {
@@ -63,7 +74,7 @@ func run() error {
 			Cfg:      cfg,
 			Ollama:   cl,
 			Chat:     chat,
-			Settings: settingsFor(cfg),
+			Settings: st,
 		})
 	}
 
@@ -88,7 +99,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	tut := tutor.New(chat, store, settingsFor(cfg))
+	tut := tutor.New(chat, store, st)
 
 	var spk *speech.Speaker
 	if !cfg.Mute {
@@ -301,14 +312,16 @@ func newChatter(cfg config.Config, cl *ollama.Client) llm.Chatter {
 
 // settingsFor turns the config into tutor settings. Shared by the real turn
 // loop and by --selftest so the probes cannot drift from production.
-func settingsFor(cfg config.Config) tutor.Settings {
+func settingsFor(cfg config.Config, persona, reviewPersona string) tutor.Settings {
 	return tutor.Settings{
-		Model:      cfg.LLM,
-		NumCtx:     cfg.NumCtx,
-		KeepAlive:  cfg.KeepAlive,
-		Think:      cfg.Think,
-		ThinkField: !cfg.Remote(),
-		NotesLang:  cfg.NotesLang,
+		Model:         cfg.LLM,
+		NumCtx:        cfg.NumCtx,
+		KeepAlive:     cfg.KeepAlive,
+		Think:         cfg.Think,
+		ThinkField:    !cfg.Remote(),
+		NotesLang:     cfg.NotesLang,
+		Persona:       persona,
+		ReviewPersona: reviewPersona,
 	}
 }
 

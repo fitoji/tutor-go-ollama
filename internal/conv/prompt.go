@@ -15,27 +15,38 @@ func EstimateTokens(s string) int {
 
 func turnTokens(t Turn) int { return EstimateTokens(t.Content) + 6 }
 
-const tutorPrompt = `You are a friendly English conversation partner helping a learner practice speaking.
+// tutorRules are the invariants: what makes the reply work on screen and in
+// the voice. A persona file may change the tutor's style, never these.
+const tutorRules = `You are a friendly English conversation partner helping a learner practice speaking.
 Your replies are read aloud, so:
-- Write 1 to 3 short, natural sentences. Never more than 45 words.
 - Plain spoken text only: no markdown, lists, emojis, asterisks or stage directions.
 - End with one simple follow-up question that keeps the conversation going.
-- Match the learner's level (given below). Prefer common words; explain a hard word only if asked.
 - Do not point out mistakes. Another tool shows corrections. If the learner makes an error, just use the correct form naturally in your reply.
 - Always answer in English, even if the learner writes in another language, unless they explicitly ask for a translation.
-- Stay on the learner's topic. Remember what they told you earlier in the conversation.`
+- Match the learner's level (given below). Prefer common words; explain a hard word only if asked.
+- Never exceed 45 words.`
+
+// defaultStyle is the editable half: ~/.speakeasy/tutor.md replaces it, so a
+// learner can make the tutor warmer, stricter or funnier without recompiling.
+const defaultStyle = `You are a warm, patient and straightforward tutor.
+Keep your vocabulary and structures inside the learner's level.
+No grammar lectures: correct in the flow, never explain a rule unless asked.
+Do not apologise for correcting the learner.
+If the learner changes the subject, follow them naturally.`
 
 // System assembles the system prompt: fixed tutor rules, the learner profile
 // and the rolling summary. Everything the model must never forget lives here,
 // at the top, and is rebuilt on every request.
-func System(d Data) string {
+func System(d Data, persona string) string {
 	var sb strings.Builder
-	sb.WriteString(tutorPrompt)
+	sb.WriteString(tutorRules)
 	fmt.Fprintf(&sb, "\n\nLearner level: %s.", d.Profile.Level)
 	// The letter alone says nothing: carry what that level means so a small
 	// model aims at the right vocabulary, grammar and subjects.
 	if p, ok := LevelOf(d.Profile.Level); ok {
 		sb.WriteString(p.Block())
+	} else {
+		sb.WriteString("\nReply length: 1-3 sentences.")
 	}
 	if len(d.Profile.Topics) > 0 {
 		fmt.Fprintf(&sb, "\nLearner interests: %s.", strings.Join(d.Profile.Topics, ", "))
@@ -47,7 +58,19 @@ func System(d Data) string {
 	if d.Summary != "" {
 		fmt.Fprintf(&sb, "\n\nSummary of the conversation so far:\n%s", d.Summary)
 	}
+	// The style goes last: it is the voice, and the model gives the end of the
+	// prompt more weight than the middle.
+	sb.WriteString("\n\nHow you talk:\n")
+	sb.WriteString(styleOf(persona))
 	return sb.String()
+}
+
+// styleOf returns the persona the learner wrote, or the built-in one.
+func styleOf(persona string) string {
+	if p := strings.TrimSpace(persona); p != "" {
+		return p
+	}
+	return defaultStyle
 }
 
 // writeFacts adds what the tutor remembers about the learner. On the first
@@ -83,8 +106,8 @@ func writeFacts(sb *strings.Builder, d Data) {
 // Build returns the exact message list for the next chat request: the system
 // prompt followed by as many recent turns as fit in the budget
 // (numCtx - replyReserve). The newest turn is always included.
-func Build(d Data, numCtx, replyReserve int) []Turn {
-	sys := System(d)
+func Build(d Data, persona string, numCtx, replyReserve int) []Turn {
+	sys := System(d, persona)
 	budget := numCtx - replyReserve - EstimateTokens(sys) - 6
 	start := len(d.Turns)
 	used := 0

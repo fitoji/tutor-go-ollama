@@ -32,6 +32,11 @@ type Settings struct {
 	// ThinkField says whether to send the "think" field (Ollama only).
 	ThinkField bool
 	NotesLang  string
+	// Persona replaces the tutor's style; empty uses the built-in one.
+	Persona string
+	// ReviewPersona sets the tone of the correction notes (a roast, a joke);
+	// empty keeps the neutral teacher voice.
+	ReviewPersona string
 }
 
 // Voice receives each finished sentence of the reply.
@@ -146,7 +151,7 @@ func (t *Tutor) Reply(ctx context.Context, user string, out io.Writer, v Voice) 
 	}
 	drop := func() { _ = t.store.Update(func(d *conv.Data) { d.DropLastTurn("user") }) }
 
-	msgs := toMessages(conv.Build(t.store.View(), t.st.NumCtx, ReplyReserve))
+	msgs := toMessages(conv.Build(t.store.View(), t.st.Persona, t.st.NumCtx, ReplyReserve))
 	var sp speech.Splitter
 	var full strings.Builder
 	stats, err := t.stream(ctx, t.request(msgs, 0.7, ReplyReserve), func(delta string) error {

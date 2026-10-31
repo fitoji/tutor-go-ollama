@@ -9,6 +9,7 @@ import "strings"
 type LevelProfile struct {
 	Name    string   // the level in words: beginner, intermediate...
 	Vocab   string   // target vocabulary size
+	Length  string   // how many sentences a reply should have
 	Can     []string // communication goals
 	Grammar []string // structures the learner already controls
 	Topics  []string // subjects worth talking about
@@ -16,8 +17,9 @@ type LevelProfile struct {
 
 var levelProfiles = map[string]LevelProfile{
 	"A1": {
-		Name:  "beginner",
-		Vocab: "500-1000 words",
+		Length: "1-2 sentences",
+		Name:   "beginner",
+		Vocab:  "500-1000 words",
 		Can: []string{
 			"greet people and introduce themselves",
 			"ask and answer simple questions about daily life",
@@ -30,8 +32,9 @@ var levelProfiles = map[string]LevelProfile{
 		Topics: []string{"family", "home", "food", "daily routine", "numbers and time"},
 	},
 	"A2": {
-		Name:  "elementary",
-		Vocab: "1000-2000 words",
+		Length: "1-2 sentences",
+		Name:   "elementary",
+		Vocab:  "1000-2000 words",
 		Can: []string{
 			"handle simple transactions",
 			"describe past events and future plans",
@@ -44,8 +47,9 @@ var levelProfiles = map[string]LevelProfile{
 		Topics: []string{"travel", "shopping", "work", "health", "free time", "weather"},
 	},
 	"B1": {
-		Name:  "intermediate",
-		Vocab: "2000-3000 words",
+		Length: "2-3 sentences",
+		Name:   "intermediate",
+		Vocab:  "2000-3000 words",
 		Can: []string{
 			"hold everyday conversations",
 			"explain opinions and plans",
@@ -62,8 +66,9 @@ var levelProfiles = map[string]LevelProfile{
 		},
 	},
 	"B2": {
-		Name:  "upper intermediate",
-		Vocab: "3000-4000 words",
+		Length: "2-3 sentences",
+		Name:   "upper intermediate",
+		Vocab:  "3000-4000 words",
 		Can: []string{
 			"argue a position",
 			"discuss abstract topics",
@@ -80,8 +85,9 @@ var levelProfiles = map[string]LevelProfile{
 		},
 	},
 	"C1": {
-		Name:  "advanced",
-		Vocab: "4000-8000 words",
+		Length: "3-5 sentences",
+		Name:   "advanced",
+		Vocab:  "4000-8000 words",
 		Can: []string{
 			"speak fluently and spontaneously",
 			"handle academic and professional topics",
@@ -97,8 +103,9 @@ var levelProfiles = map[string]LevelProfile{
 		},
 	},
 	"C2": {
-		Name:  "mastery",
-		Vocab: "8000+ words",
+		Length: "3-5 sentences",
+		Name:   "mastery",
+		Vocab:  "8000+ words",
 		Can: []string{
 			"express themselves with near-native precision",
 			"control style and register",
@@ -125,6 +132,7 @@ func (p LevelProfile) Block() string {
 	var sb strings.Builder
 	sb.WriteString("\nAt this level (" + p.Name + ") the learner can: " + strings.Join(p.Can, "; ") + ".")
 	sb.WriteString("\nVocabulary target: " + p.Vocab + ".")
+	sb.WriteString("\nReply length: " + p.Length + ".")
 	sb.WriteString("\nGrammar they already control: " + strings.Join(p.Grammar, ", ") + ".")
 	sb.WriteString("\nGood topics: " + strings.Join(p.Topics, ", ") + ".")
 	return sb.String()

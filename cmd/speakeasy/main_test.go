@@ -758,7 +758,7 @@ func TestOursAndGib(t *testing.T) {
 // field as production, or it proves nothing.
 func TestSettingsForMatchesTheConfiguredProvider(t *testing.T) {
 	cfg := config.Config{Provider: "ollama", LLM: "qwen3:8b", NumCtx: 8192, KeepAlive: "30m", Think: true, NotesLang: "Spanish"}
-	st := settingsFor(cfg)
+	st := settingsFor(cfg, "", "")
 	if st.Model != "qwen3:8b" || st.NumCtx != 8192 || st.KeepAlive != "30m" || st.NotesLang != "Spanish" {
 		t.Errorf("settings %+v", st)
 	}
@@ -766,7 +766,7 @@ func TestSettingsForMatchesTheConfiguredProvider(t *testing.T) {
 		t.Error("a local provider sends the think field")
 	}
 	cfg.Provider = "groq"
-	if settingsFor(cfg).ThinkField {
+	if settingsFor(cfg, "", "").ThinkField {
 		t.Error("a remote provider must not send the Ollama-only think field")
 	}
 }
