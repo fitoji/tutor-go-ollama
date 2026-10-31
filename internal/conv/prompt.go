@@ -49,9 +49,9 @@ func System(d Data, persona, target string) string {
 	// model aims at the right vocabulary, grammar and subjects. Until the
 	// target has its own profile (hito 4, T3), only the length is safe: an
 	// English grammar list would teach the wrong language.
-	if p, ok := LevelOf(d.Profile.Level); ok && target == "en" {
+	if p, ok := LevelOf(target, d.Profile.Level); ok {
 		sb.WriteString(p.Block())
-	} else if ok {
+	} else if p, ok := LevelOf("en", d.Profile.Level); ok {
 		fmt.Fprintf(&sb, "\nReply length: %s.", p.Length)
 	} else {
 		sb.WriteString("\nReply length: 1-3 sentences.")

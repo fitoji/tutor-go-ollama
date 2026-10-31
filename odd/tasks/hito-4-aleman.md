@@ -24,7 +24,7 @@ Branch: `main`. Delivery: work-unit commits. Runner: `go test -race ./...`. Esta
 |---|---|---|---|
 | T1 | S2 | inline: ruta por idioma + copia del perfil actual a `en/` (riesgo: datos guardados) | **hecho** |
 | T2 | S1, S3, S4 | inline: `--target` atravesando tutor, revisión, resumen | **hecho** |
-| T3 | S5 | inline: perfiles MCER de alemán, desde el temario documentado | pendiente |
+| T3 | S5 | inline: perfiles MCER de alemán, desde el temario documentado | **hecho** |
 | T4 | S6, S7 | inline: default de voz y STT por idioma + validaciones | pendiente |
 | T5 | S8 | docs: README, `/help`, una persona de ejemplo en alemán | pendiente |
 | T6 | S9 | inline: VAD por bloques en `internal/voice` + `--vad` + tests con PCM sintético | pendiente |
@@ -53,3 +53,5 @@ Branch: `main`. Delivery: work-unit commits. Runner: `go test -race ./...`. Esta
 **L10** — T1 hecho: `users/<nombre>/<idioma>/state.json`, `--target en|de`, y migración del perfil sin idioma a `en/` (copia, el original queda). Verificado a mano: arrancar con `--target de` sobre un perfil viejo lo migra a `en/` y crea `de/` vacío. Los prompts siguen en inglés: eso es T2.
 
 **L11** — T2 hecho: el idioma atraviesa las reglas del tutor, el resumen y la revisión (`conv.LanguageName`, plantillas en `tutorRules`/`summaryPrompt`, "a German teacher" en la revisión). Con `--target de` el perfil MCER inglés **no** se inyecta (solo el largo de respuesta) para no enseñar gramática inglesa: eso llega en T3. Verificado con qwen3.5:9b: responde en alemán.
+
+**L12** — T3 hecho: `levelProfiles` pasó a ser por idioma (`en`, `de`), con los seis niveles alemanes del temario y la gramática en términos alemanes (Präsens, Perfekt, Akkusativ, Konjunktiv II). Un idioma sin perfil cae al nivel pelado más el largo de respuesta, nunca a la gramática inglesa. Test nuevo: el perfil alemán existe en los seis niveles y no contiene gramática inglesa.

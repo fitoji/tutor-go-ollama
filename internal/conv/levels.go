@@ -15,7 +15,7 @@ type LevelProfile struct {
 	Topics  []string // subjects worth talking about
 }
 
-var levelProfiles = map[string]LevelProfile{
+var englishLevels = map[string]LevelProfile{
 	"A1": {
 		Length: "1-2 sentences",
 		Name:   "beginner",
@@ -118,9 +118,128 @@ var levelProfiles = map[string]LevelProfile{
 	},
 }
 
-// LevelOf looks a level up, ignoring case and surrounding spaces.
-func LevelOf(level string) (LevelProfile, bool) {
-	p, ok := levelProfiles[strings.ToUpper(strings.TrimSpace(level))]
+// germanLevels is the German curriculum from odd/tasks/hito-4-temario-aleman.md.
+// The grammar uses German terms on purpose: "Präsens" is what a German course
+// calls it, and translating it to "present tense" invites the model to reach
+// for English structures that do not exist here.
+var germanLevels = map[string]LevelProfile{
+	"A1": {
+		Length: "1-2 sentences",
+		Name:   "beginner",
+		Vocab:  "650 words",
+		Can: []string{
+			"introduce themselves and answer questions about their life",
+			"order food, shop and ask for prices",
+			"understand simple instructions",
+		},
+		Grammar: []string{
+			"Präsens (regular and irregular)", "Nominativ and Akkusativ", "articles der/die/das",
+			"negation with nicht and kein", "possessive articles", "trennbare Verben",
+			"Modalverben", "W-Fragen and yes/no questions", "Imperativ", "verb in second position",
+		},
+		Topics: []string{"family", "home", "food and drink", "shopping", "work (basics)", "daily routine", "countries and languages"},
+	},
+	"A2": {
+		Length: "1-2 sentences",
+		Name:   "elementary",
+		Vocab:  "1300 words",
+		Can: []string{
+			"talk about the past and about plans",
+			"handle travel, health and appointments",
+			"understand short everyday texts",
+		},
+		Grammar: []string{
+			"Perfekt with haben and sein", "Präteritum of sein, haben and modals", "Dativ",
+			"Wechselpräpositionen", "Nebensätze with weil, dass and wenn", "Komparativ and Superlativ",
+			"adjective declension (nominative and accusative)", "reflexive Verben", "temporal clauses with als and wenn",
+		},
+		Topics: []string{"travel and holidays", "health and doctor", "housing", "celebrations", "clothes", "weather", "transport"},
+	},
+	"B1": {
+		Length: "2-3 sentences",
+		Name:   "intermediate",
+		Vocab:  "2400 words",
+		Can: []string{
+			"tell experiences and plans in detail",
+			"argue a simple opinion",
+			"deal with offices and paperwork",
+		},
+		Grammar: []string{
+			"narrative Präteritum", "Konjunktiv II for politeness and wishes", "Passiv (Präsens and Präteritum)",
+			"Relativsätze (nominative and accusative)", "Genitiv (basics)", "full adjective declension",
+			"Verben mit Präpositionen", "Konnektoren deshalb, trotzdem, außerdem", "Nebensätze with obwohl, damit, während",
+			"Infinitiv mit zu", "indirect questions",
+		},
+		Topics: []string{"work and applications", "education", "environment", "society", "offices and paperwork", "consumption", "media"},
+	},
+	"B2": {
+		Length: "2-3 sentences",
+		Name:   "upper intermediate",
+		Vocab:  "4000-5000 words",
+		Can: []string{
+			"argue with nuance and follow a discussion",
+			"understand specialised texts in their field",
+			"write structured texts",
+		},
+		Grammar: []string{
+			"Konjunktiv II (unreal, present and past)", "Passiv with modals", "Konjunktiv I for reported speech (basics)",
+			"Relativsätze (dative, genitive, with prepositions)", "Partizipialkonstruktionen", "Nominalisierung",
+			"Konnektoren dennoch, allerdings, daher, sodass", "entweder…oder, sowohl…als auch, je…desto",
+			"Futur I and II", "prepositions with Genitiv (wegen, trotz, während)", "word order TeKaMoLo",
+		},
+		Topics: []string{"politics", "economy", "science", "culture", "working life", "environmental policy", "ethics"},
+	},
+	"C1": {
+		Length: "3-5 sentences",
+		Name:   "advanced",
+		Vocab:  "8000 words",
+		Can: []string{
+			"speak fluently and spontaneously",
+			"use German flexibly for academic and professional purposes",
+			"understand long, demanding texts",
+		},
+		Grammar: []string{
+			"Nominalstil", "Funktionsverbgefüge", "full Partizipialkonstruktionen", "Konjunktiv I in reported speech",
+			"Passiversatzformen (lassen sich, sein + zu + Infinitiv)", "Konnektoren sofern, indem, wohingegen",
+			"marked word order and inversion", "Genitivattribute", "Wortbildung", "Modalpartikeln",
+		},
+		Topics: []string{"society", "science", "law", "philosophy", "economy", "migration", "technology"},
+	},
+	"C2": {
+		Length: "3-5 sentences",
+		Name:   "mastery",
+		Vocab:  "16000 words",
+		Can: []string{
+			"understand with ease everything read or heard",
+			"express themselves precisely and with nuance",
+			"catch irony and register",
+		},
+		Grammar: []string{
+			"stylistic control of register", "Redewendungen and idiomaticity", "rare structures",
+			"ironic nuance", "literary and scientific texts", "archaisms and rhetorical figures",
+		},
+		Topics: []string{"anything, including humour, irony and specialised debate"},
+	},
+}
+
+// levelProfiles is the curriculum per language. A language without an entry has
+// no profile yet, and the prompt falls back to the bare level plus its length.
+var levelProfiles = map[string]map[string]LevelProfile{
+	"en": englishLevels,
+	"de": germanLevels,
+}
+
+// LevelOf looks a level up in one language, ignoring case and spaces. An empty
+// language means English.
+func LevelOf(lang, level string) (LevelProfile, bool) {
+	if lang == "" {
+		lang = "en"
+	}
+	byLevel, ok := levelProfiles[lang]
+	if !ok {
+		return LevelProfile{}, false
+	}
+	p, ok := byLevel[strings.ToUpper(strings.TrimSpace(level))]
 	return p, ok
 }
 
