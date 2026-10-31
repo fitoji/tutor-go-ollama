@@ -41,7 +41,7 @@ Ejemplos:
 
 Con un proveedor remoto **tus mensajes salen a un servidor externo** (la app lo recuerda al arrancar). Usa modelos sin razonamiento largo: los que «piensan» gastan el límite de tokens antes de contestar. Si el modelo emite bloques `<think>...</think>`, se descartan.
 
-Otras opciones (flag o variable): `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice` (femenina, masculina o un nombre exacto), `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false` (oculta los `✎`; la pasada de revisión sigue guardando datos), `--persona` (archivo que cambia la voz del tutor), `--review-persona` (archivo que cambia el tono de las correcciones), `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo). Los del micrófono (`--stt*`, `--whisper-*`, `--record-max`) están en [Entrada por voz](#entrada-por-voz).
+Otras opciones (flag o variable): `--target` / `SPEAKEASY_TARGET` (idioma que practicás: `en` o `de`), `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice` (femenina, masculina o un nombre exacto), `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false` (oculta los `✎`; la pasada de revisión sigue guardando datos), `--persona` (archivo que cambia la voz del tutor), `--review-persona` (archivo que cambia el tono de las correcciones), `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo). Los del micrófono (`--stt*`, `--whisper-*`, `--record-max`) están en [Entrada por voz](#entrada-por-voz).
 
 ### Antes de la primera sesión: `--selftest`
 
@@ -102,9 +102,12 @@ El nivel y los errores recurrentes son de quien practica, no de la máquina. Al 
 ├── state.json                 # perfil viejo, compartido (solo se lee una vez)
 ├── last-user                  # el último nombre usado, para ofrecerlo con Enter
 └── users/
-    ├── ana/state.json         # nivel, temas, errores, resumen y turnos de Ana
-    └── beto/state.json
+    ├── ana/en/state.json      # el perfil de inglés de Ana
+    ├── ana/de/state.json      # el de alemán: arranca de cero
+    └── beto/en/state.json
 ```
+
+Cada idioma (`--target en|de`) es un **tutor nuevo**: perfil separado, onboarding completo y errores propios, aunque seas la misma persona. Un perfil escrito antes de que existieran los idiomas se migra a `en/` la primera vez (se copia, no se mueve).
 
 - **`--user Ana`** (o `SPEAKEASY_USER=Ana`) se salta la pregunta: sirve para scripts y para atajos en el shell.
 - **Sin terminal** (stdin por caño, `< /dev/null`, o fd 0 cerrado) no pregunta nada: usa el último nombre, o `default` si no hay ninguno. Nunca se queda esperando ni ensucia la primera línea de la salida.
@@ -148,7 +151,19 @@ tutor> That sounds fun! What did you see?
   ✎ "I go" → "I went" …
 ```
 
-Necesita tres cosas: `ffmpeg` (`brew install ffmpeg`), la clave `GROQ_API_KEY` y permiso de micrófono para la terminal (macOS lo pide la primera vez; si lo negás, el mensaje te dice a dónde ir).
+Las dos formas, probadas:
+
+```sh
+# 1) nube: Groq transcribe (necesita GROQ_API_KEY exportada en esa terminal)
+./speakeasy --provider ollama --llm qwen3.5:9b
+
+# 2) offline: whisper.cpp en tu máquina, sin clave y sin red
+./speakeasy --provider ollama --llm qwen3.5:9b --stt whisper
+```
+
+Si el header dice `mic=off`, el motivo va entre paréntesis —`mic=off (sin GROQ_API_KEY)`, `mic=off (falta ffmpeg)`— y la línea de `aviso:` arriba dice cómo arreglarlo. **No es el micrófono de macOS**: eso es otro permiso, que aparece la primera vez que grabás de verdad (Ajustes → Privacidad y seguridad → Micrófono).
+
+Necesita tres cosas: `ffmpeg` (`brew install ffmpeg`), la clave `GROQ_API_KEY` (solo para `--stt groq`) y permiso de micrófono para la terminal.
 
 | Flag | Default | Qué hace |
 |---|---|---|
