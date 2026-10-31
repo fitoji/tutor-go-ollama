@@ -2,3 +2,6 @@
 /speakeasy
 # Local AI runtime state
 .atl/
+
+# macOS
+.DS_Store
