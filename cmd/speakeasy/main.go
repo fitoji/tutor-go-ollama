@@ -63,6 +63,22 @@ func run() error {
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 
+	// Ctrl-C during startup (the name prompt, the model load) cancels cleanly
+	// instead of dying on SIGINT: otherwise the shell prompt reports INT for a
+	// launch the user simply abandoned.
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
+	startup := make(chan struct{})
+	go func() {
+		select {
+		case <-sigc:
+			fmt.Println("\n" + sty.Dim("cancelado"))
+			stop()
+			os.Exit(0)
+		case <-startup:
+		}
+	}()
+
 	// Ollama always hosts the voice; it hosts the chat model only locally.
 	cl := ollama.New(cfg.Host)
 	chat := newChatter(cfg, cl)
@@ -140,11 +156,11 @@ func run() error {
 		tut.Wait(3 * time.Second)
 	}
 
-	// Ctrl-C interrupts the current turn; at the prompt it quits.
+	// The session is ready: from here Ctrl-C interrupts the current turn, and at
+	// the prompt it quits.
+	close(startup)
 	var mu sync.Mutex
 	var cancelTurn context.CancelFunc
-	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		for range sigc {
 			mu.Lock()
