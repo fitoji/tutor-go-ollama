@@ -43,3 +43,20 @@ func TestGermanTargetChangesThePrompt(t *testing.T) {
 		t.Errorf("english prompt regressed:\n%s", en)
 	}
 }
+
+// TestGermanA1TeachesFromZero: at A1 the tutor gives a lesson, not a chat.
+func TestGermanA1TeachesFromZero(t *testing.T) {
+	a1 := System(Data{Profile: Profile{Level: "A1"}}, "", "de")
+	for _, want := range []string{"first German lesson", "Sprich nach", "numbers 1-10", "Teach, do not chat"} {
+		if !strings.Contains(a1, want) {
+			t.Errorf("A1 german prompt should contain %q:\n%s", want, a1)
+		}
+	}
+	// Only A1 German: a B1 learner converses, and English is untouched.
+	if b1 := System(Data{Profile: Profile{Level: "B1"}}, "", "de"); strings.Contains(b1, "Sprich nach") {
+		t.Errorf("B1 german must not be a lesson:\n%s", b1)
+	}
+	if en := System(Data{Profile: Profile{Level: "A1"}}, "", "en"); strings.Contains(en, "Sprich nach") {
+		t.Errorf("english A1 must not be a German lesson:\n%s", en)
+	}
+}

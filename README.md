@@ -254,6 +254,28 @@ El mnemónico queda en tu perfil como `mnemonic-<categoría>` y el tutor lo reci
 
 Límites: es una guía, no una medición. La app no detecta tu nivel ni te promociona sola; lo cambiás vos con `/level`. Si el nivel guardado no está en la tabla (un perfil viejo), el prompt usa solo la letra y nada más.
 
+## Alemán
+
+`--target de` cambia todo lo que depende del idioma:
+
+- **Perfil aparte**: `users/<nombre>/de/state.json`. Empezar alemán es empezar de cero, con su onboarding, aunque seas la misma persona.
+- **Prompts en alemán**: el tutor responde en alemán y la revisión la hace un profesor alemán.
+- **Perfil MCER alemán**: Präsens, Akkusativ, Konjunktiv II… no la gramática inglesa traducida.
+- **Voz y micrófono**: `phonon:de` (una sola voz, sin alias femenina/masculina) y `--stt-lang de`.
+- **A1 es una lección, no una charla**: una palabra o frase por turno, te la dice, te pide que la repitas (`Sprich nach: …`) y avanza por saludos, «Ich heiße…», números, días y «Ich komme aus…». Sin gramática y sin slang.
+
+```sh
+./speakeasy --provider ollama --llm qwen3.5:9b --target de
+```
+
+```
+tutor> Hallo! Sprich nach: Hallo. Wie heißt du?
+tú> Fito
+tutor> Gut, Fito! Ich heiße Maria. Sprich nach: Ich heiße Maria. Woher kommst du?
+```
+
+Arriba de A1 el tutor vuelve a conversar: el modo lección es solo para el que empieza de cero. Hay una persona de ejemplo en `personas/deutsch.md`.
+
 ## Voz
 
 La voz la sirve Phonon desde Ollama. `--voice` acepta dos atajos o el nombre exacto de una voz:
@@ -399,7 +421,7 @@ odd/tasks/           planes de los hitos grandes, con su bitácora
 
 Lo que quedó afuera del hito 3, en orden de utilidad: elegir el dispositivo de audio desde la app (`--stt-device` ya existe, pero hay que saber el índice), cortar la grabación por silencio (VAD) en vez de esperar el segundo Enter, y una vista de progreso como la de lingua-loop (`/progress` con estadísticas de la semana).
 
-**Hito 4, planificado**: alemán como idioma extra. `--target en|de`, perfil MCER alemán (la gramática inglesa no se puede traducir: *present perfect* no existe en alemán), voz `phonon:de` con una sola voz, whisper multilingüe y un perfil por idioma: empezar alemán es empezar de cero, como un tutor nuevo que no sabe nada de vos. El hito arrastra dos mejoras de voz: VAD por energía en Go (corta al callarte, sin segundo Enter) y `say` como backend de TTS (sin Ollama; es lo que destraba el italiano). Plan en [`odd/tasks/hito-4-aleman.md`](odd/tasks/hito-4-aleman.md) y temario en [`odd/tasks/hito-4-temario-aleman.md`](odd/tasks/hito-4-temario-aleman.md).
+**Hito 4, en curso**: alemán ya funciona (perfil por idioma, prompts, MCER, voz `phonon:de`, modo lección en A1). Faltan dos mejoras de voz que arrastra el hito: VAD por energía en Go (corta al callarte, sin segundo Enter) y `say` como backend de TTS (sin Ollama; es lo que destraba el italiano). Plan en [`odd/tasks/hito-4-aleman.md`](odd/tasks/hito-4-aleman.md) y temario en [`odd/tasks/hito-4-temario-aleman.md`](odd/tasks/hito-4-temario-aleman.md).
 
 **Hito 5, planificado**: `/progress` con días activos, racha, turnos y los errores del período, más un resumen corto del modelo que falla en silencio. Necesita fechas en los turnos y un registro de eventos acotado. Plan en [`odd/tasks/hito-5-progreso.md`](odd/tasks/hito-5-progreso.md).
 

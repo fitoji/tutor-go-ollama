@@ -26,6 +26,18 @@ Your replies are read aloud, so:
 - Match the learner's level (given below). Prefer common words; explain a hard word only if asked.
 - Never exceed 45 words.`
 
+// germanA1Lesson turns the tutor into a teacher from zero. A beginner cannot
+// hold a conversation yet, so chatting wastes the turn: one word, repeat it,
+// next. It is German-only on purpose — the voice is the German checkpoint, and
+// mixing languages there sounds wrong.
+const germanA1Lesson = `
+This is the learner's first German lesson. Teach, do not chat:
+- One word or short phrase per turn: say it, then ask them to repeat it ("Sprich nach: …").
+- Go in this order: greetings, "Ich heiße…", numbers 1-10, days of the week, "Ich komme aus…", ordering something.
+- Very short words, slow pace, no slang, no long sentences, no grammar explanations.
+- If the repetition is not right, say it once more, kindly, and move on.
+- Praise in one short sentence, then the next word.`
+
 // defaultStyle is the editable half: ~/.speakeasy/tutor.md replaces it, so a
 // learner can make the tutor warmer, stricter or funnier without recompiling.
 const defaultStyle = `You are a warm, patient and straightforward tutor.
@@ -55,6 +67,10 @@ func System(d Data, persona, target string) string {
 		fmt.Fprintf(&sb, "\nReply length: %s.", p.Length)
 	} else {
 		sb.WriteString("\nReply length: 1-3 sentences.")
+	}
+	// A1 German is a lesson, not a chat: the level is the trigger, not a flag.
+	if target == "de" && strings.EqualFold(strings.TrimSpace(d.Profile.Level), "A1") {
+		sb.WriteString(germanA1Lesson)
 	}
 	if len(d.Profile.Topics) > 0 {
 		fmt.Fprintf(&sb, "\nLearner interests: %s.", strings.Join(d.Profile.Topics, ", "))
