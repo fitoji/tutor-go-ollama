@@ -381,6 +381,12 @@ odd/tasks/           planes de los hitos grandes, con su bitácora
 
 Lo que quedó afuera del hito 3, en orden de utilidad: elegir el dispositivo de audio desde la app (`--stt-device` ya existe, pero hay que saber el índice), cortar la grabación por silencio (VAD) en vez de esperar el segundo Enter, y una vista de progreso como la de lingua-loop (`/progress` con estadísticas de la semana).
 
+**Hito 4, planificado**: alemán como idioma extra. `--target en|de`, perfil MCER alemán (la gramática inglesa no se puede traducir: *present perfect* no existe en alemán), voz `phonon:de` con una sola voz, whisper multilingüe y un perfil por idioma: empezar alemán es empezar de cero, como un tutor nuevo que no sabe nada de vos. El hito arrastra dos mejoras de voz: VAD por energía en Go (corta al callarte, sin segundo Enter) y `say` como backend de TTS (sin Ollama; es lo que destraba el italiano). Plan en [`odd/tasks/hito-4-aleman.md`](odd/tasks/hito-4-aleman.md) y temario en [`odd/tasks/hito-4-temario-aleman.md`](odd/tasks/hito-4-temario-aleman.md).
+
+**Hito 5, planificado**: `/progress` con días activos, racha, turnos y los errores del período, más un resumen corto del modelo que falla en silencio. Necesita fechas en los turnos y un registro de eventos acotado. Plan en [`odd/tasks/hito-5-progreso.md`](odd/tasks/hito-5-progreso.md).
+
+**Hito 6, planificado**: vocabulario con repaso espaciado — lista propia por alumno, categoría y rating, `/review`, y el tutor usando las palabras que te tocan (con el mnemónico que ya existe). Plan en [`odd/tasks/hito-6-vocabulario.md`](odd/tasks/hito-6-vocabulario.md).
+
 ## Sin verificar
 
 Se desarrolló con servidores simulados (Ollama y compatible con OpenAI). **Verificado en macOS arm64 con Ollama 0.40.13 y phonon**: `--selftest` pasa las cinco comprobaciones contra los servicios reales y una sesión con voz funciona. Queda sin probar contra Groq y contra xAI/custom. Puntos a confirmar:
