@@ -190,7 +190,7 @@ Necesita tres cosas: `ffmpeg` (`brew install ffmpeg`), la clave `GROQ_API_KEY` (
 | `--stt-device` | `:0` | dispositivo de `avfoundation` |
 | `--stt-base` | `https://api.groq.com/openai/v1` | endpoint compatible OpenAI |
 | `--stt-key-env` | `GROQ_API_KEY` | variable con la clave |
-| `--whisper-model` | `~/.speakeasy/models/ggml-small.en.bin` | modelo ggml para `--stt whisper` |
+| `--whisper-model` | `~/.speakeasy/models/ggml-large-v3-turbo-q8_0.bin` | modelo ggml para `--stt whisper` |
 | `--whisper-bin` | `whisper-cli` | binario de whisper.cpp |
 | `--record-max` | `30` | tope de grabación, en segundos |
 | `--vad` | `800` | ms de silencio para cortar solo (0 = solo el Enter corta) |
@@ -203,7 +203,7 @@ Detalles que importan:
 - **Si pensás mucho, apagalo**: `/vad 0` en plena sesión (o `--vad 0` al arrancar) y solo corta el Enter. `/vad 2000` da dos segundos de margen; `/vad` sin argumento muestra el valor actual.
 - **Groq factura mínimo 10 s por request**, así que una frase de 3 s cuesta lo mismo que una de 10 (~$0.0001 con `turbo`).
 - La grabación la hace `ffmpeg` con `avfoundation`; si el índice del micrófono no es el 0, `ffmpeg -f avfoundation -list_devices true -i ""` los lista.
-- **Con `--target de` el idioma del micrófono pasa a `de`** (si no pasás `--stt-lang`). Y si usás `--stt whisper` con el modelo `.en`, la app se niega a grabar: ese modelo no falla en alemán, **inventa** palabras. Hay que bajar `ggml-small.bin` (multilingüe) y pasarlo por `--whisper-model`.
+- **Con `--target de` el idioma del micrófono pasa a `de`** (si no pasás `--stt-lang`). Y si usás `--stt whisper` con un modelo `.en`, la app se niega a grabar: ese modelo no falla en alemán, **inventa** palabras. Con el default multilingüe no hay problema; solo pasa si elegiste el `small.en` para ir más rápido.
 - **Ojo**: `ollama pull mannix/whisper` no sirve. Ese modelo está hecho para *xOllama*, no para Ollama stock: lo baja y no lo puede correr.
 
 ### 📴 Sin red: whisper local
@@ -211,13 +211,25 @@ Detalles que importan:
 ```sh
 brew install whisper-cpp
 mkdir -p ~/.speakeasy/models
-curl -L -o ~/.speakeasy/models/ggml-small.en.bin \
-  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
+curl -L -o ~/.speakeasy/models/ggml-large-v3-turbo-q8_0.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin
 
 ./speakeasy --provider ollama --llm qwen3.5:9b --stt whisper
 ```
 
-Con `--stt whisper` el audio **no sale de la máquina**: se escribe un WAV temporal, lo transcribe `whisper-cli` y se borra. Medido en este M4 con `ggml-small.en.bin` (465 MB): **0.6 s por frase** con el modelo en caché de página, 1.7 s la primera vez que se carga. No necesita clave ni daemon; compite por RAM con el LLM (small ~0.5 GB, así que con `qwen3.5:9b` quedan ~6 GB usados de 16).
+Con `--stt whisper` el audio **no sale de la máquina**: se escribe un WAV temporal, lo transcribe `whisper-cli` y se borra. No necesita clave ni daemon.
+
+El default es **`large-v3-turbo` (q8, 834 MB)** porque es **multilingüe**: transcribe inglés y alemán, y es el que hace que `--target de` funcione sin red. Medido en este M4, con el modelo en caché: **1.4 s por frase** (2.9 s la primera, que carga los 834 MB desde disco).
+
+**Si querés velocidad y solo inglés**, existe `ggml-small.en.bin` (465 MB): **0.5 s por frase**. Es el que estaba antes, y sigue sirviendo:
+
+```sh
+curl -L -o ~/.speakeasy/models/ggml-small.en.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
+./speakeasy --stt whisper --whisper-model ~/.speakeasy/models/ggml-small.en.bin
+```
+
+Ojo: el `.en` **solo transcribe inglés**. Con alemán no falla, **inventa** — devuelve una frase en inglés que nunca dijiste —, y por eso la app se niega a grabar si el modelo termina en `.en` y el target no es inglés.
 
 ## 🎚️ Niveles
 
@@ -465,6 +477,8 @@ Lo que falta, en orden de utilidad: elegir el dispositivo de audio desde la app 
 **Hito 5, hecho**: `/progress` con días activos, racha, turnos y los errores del período, más un resumen corto del modelo que falla en silencio. Plan en [`odd/tasks/hito-5-progreso.md`](odd/tasks/hito-5-progreso.md).
 
 **Hito 6, planificado**: vocabulario con repaso espaciado — lista propia por alumno, categoría y rating, `/review`, y el tutor usando las palabras que te tocan (con el mnemónico que ya existe). Plan en [`odd/tasks/hito-6-vocabulario.md`](odd/tasks/hito-6-vocabulario.md).
+
+**Hito 7, idea**: separar el modelo que conversa del que corrige (`--review-llm`), porque con API remota no hay costo de memoria por tener dos, y la revisión paga por precisión mientras la charla paga por latencia. Incluye un protocolo para medir si un modelo más grande mejora de verdad. Plan en [`odd/tasks/hito-7-modelos.md`](odd/tasks/hito-7-modelos.md).
 
 ## ⚠️ Sin verificar
 
