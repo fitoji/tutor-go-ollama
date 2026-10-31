@@ -478,7 +478,7 @@ Lo que falta, en orden de utilidad: elegir el dispositivo de audio desde la app 
 
 **Hito 6, planificado**: vocabulario con repaso espaciado — lista propia por alumno, categoría y rating, `/review`, y el tutor usando las palabras que te tocan (con el mnemónico que ya existe). Plan en [`odd/tasks/hito-6-vocabulario.md`](odd/tasks/hito-6-vocabulario.md).
 
-**Hito 7, idea**: separar el modelo que conversa del que corrige (`--review-llm`), porque con API remota no hay costo de memoria por tener dos, y la revisión paga por precisión mientras la charla paga por latencia. Incluye un protocolo para medir si un modelo más grande mejora de verdad. Plan en [`odd/tasks/hito-7-modelos.md`](odd/tasks/hito-7-modelos.md).
+**Hito 7, idea**: separar el modelo que conversa del que corrige (`--review-llm`), porque con API remota no hay costo de memoria por tener dos, y la revisión paga por precisión mientras la charla paga por latencia. Incluye un protocolo para medir si un modelo más grande mejora de verdad, y el atajo para probarlo sin comprar otra API: Ollama Cloud (`--provider custom --api-base https://ollama.com/v1 --api-key-env OLLAMA_API_KEY`). Plan en [`odd/tasks/hito-7-modelos.md`](odd/tasks/hito-7-modelos.md).
 
 ## ⚠️ Sin verificar
 
