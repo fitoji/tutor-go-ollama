@@ -15,6 +15,8 @@ go build -o speakeasy ./cmd/speakeasy
 ./speakeasy --mute             # solo texto: no hace falta Ollama
 ```
 
+Al arrancar limpia la pantalla, solo si es una terminal: `--no-clear` lo evita y `--selftest` nunca limpia (un script está leyendo esa salida).
+
 Escribes en inglés (o en español; el tutor siempre responde en inglés). Mientras suena la respuesta se calculan las correcciones de tu mensaje. Si escribes otra cosa mientras habla, se interrumpe. `Ctrl-C` corta el turno; en el prompt, sale.
 
 Al arrancar te pregunta quién sos (`usuario:`); con Enter mantiene el último. Cada nombre guarda su propio nivel y sus propios errores, así que dos personas pueden compartir la máquina sin pisarse el perfil (ver [Un perfil por persona](#un-perfil-por-persona)).
@@ -41,7 +43,7 @@ Ejemplos:
 
 Con un proveedor remoto **tus mensajes salen a un servidor externo** (la app lo recuerda al arrancar). Usa modelos sin razonamiento largo: los que «piensan» gastan el límite de tokens antes de contestar. Si el modelo emite bloques `<think>...</think>`, se descartan.
 
-Otras opciones (flag o variable): `--target` / `SPEAKEASY_TARGET` (idioma que practicás: `en` o `de`), `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice` (femenina, masculina o un nombre exacto), `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false` (oculta los `✎`; la pasada de revisión sigue guardando datos), `--persona` (archivo que cambia la voz del tutor), `--review-persona` (archivo que cambia el tono de las correcciones), `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo). Los del micrófono (`--stt*`, `--whisper-*`, `--record-max`) están en [Entrada por voz](#entrada-por-voz).
+Otras opciones (flag o variable): `--target` / `SPEAKEASY_TARGET` (idioma que practicás: `en` o `de`), `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice` (femenina, masculina o un nombre exacto), `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false` (oculta los `✎`; la pasada de revisión sigue guardando datos), `--no-clear` (no limpia la pantalla al arrancar), `--persona` (archivo que cambia la voz del tutor), `--review-persona` (archivo que cambia el tono de las correcciones), `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo). Los del micrófono (`--stt*`, `--whisper-*`, `--record-max`) están en [Entrada por voz](#entrada-por-voz).
 
 ### 🩺 Antes de la primera sesión: `--selftest`
 

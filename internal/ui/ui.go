@@ -35,6 +35,15 @@ func (s Style) Amber(t string) string   { return s.wrap("33", t) }
 func (s Style) Cyan(t string) string    { return s.wrap("36", t) }
 func (s Style) Magenta(t string) string { return s.wrap("35", t) }
 
+// Clear wipes the visible screen and homes the cursor. It does not clear the
+// scrollback: what you ran before is still there if you scroll up.
+func Clear(w io.Writer) {
+	if w == nil {
+		return
+	}
+	fmt.Fprint(w, "\x1b[2J\x1b[H")
+}
+
 // spinnerFrames is a braille spinner: it reads well at small sizes and is one
 // rune per frame.
 var spinnerFrames = []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")

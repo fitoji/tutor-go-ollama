@@ -51,3 +51,14 @@ func TestSpinnerAnimatesAndClears(t *testing.T) {
 	// Stopping twice must not panic or hang.
 	s.Stop()
 }
+
+// TestClearWipesTheScreenOnlyWhenAsked keeps the sequence in one place.
+func TestClearWipesTheScreenOnlyWhenAsked(t *testing.T) {
+	var out bytes.Buffer
+	Clear(&out)
+	if out.String() != "\x1b[2J\x1b[H" {
+		t.Errorf("clear = %q", out.String())
+	}
+	// A nil writer must not panic: callers pass one when there is no terminal.
+	Clear(nil)
+}

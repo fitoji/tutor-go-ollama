@@ -50,6 +50,11 @@ func run() error {
 	}
 	// Colour only on a terminal: pipes, logs and tests get plain text.
 	sty := ui.New(isTerminal(os.Stdout))
+	// A chat deserves a clean screen, but only on a terminal, never for a
+	// --selftest a script may be reading, and never against --no-clear.
+	if sty.Enabled() && !cfg.SelfTest && !cfg.NoClear {
+		ui.Clear(os.Stdout)
+	}
 
 	// Keep this process small: it is only an orchestrator.
 	debug.SetMemoryLimit(int64(cfg.MemLimitMiB) << 20)

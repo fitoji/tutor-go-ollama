@@ -34,6 +34,7 @@ type Config struct {
 	TTSSet          bool   // true when --tts was given
 	STTLangSet      bool   // true when --stt-lang was given
 	Mute            bool
+	NoClear         bool // keep the screen at startup
 	MemLimitMiB     int  // soft Go heap limit
 	SelfTest        bool // check the configured providers and exit
 	ProgressSummary bool // ask the model for the /progress note
@@ -136,6 +137,7 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.User, "user", envOr("SPEAKEASY_USER", ""), "learner name; each name keeps its own level and corrections (asks at startup when empty)")
 	fs.StringVar(&c.StatePath, "state", filepath.Join(home, ".speakeasy", "state.json"), "state file; without this flag each learner gets a directory next to it")
 	fs.BoolVar(&c.Mute, "mute", false, "text only, no voice")
+	fs.BoolVar(&c.NoClear, "no-clear", false, "keep what was on screen instead of starting with a clean one")
 	fs.IntVar(&c.MemLimitMiB, "mem-limit", 256, "soft memory limit for this process, in MiB")
 	fs.BoolVar(&c.SelfTest, "selftest", false, "check the configured chat, corrections and voice, then exit")
 	fs.BoolVar(&c.ProgressSummary, "progress-summary", true, "ask the model for the short note in /progress")
