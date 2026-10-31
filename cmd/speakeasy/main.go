@@ -114,6 +114,9 @@ func run() error {
 		}
 	}
 
+	if cfg.VoiceNote != "" {
+		fmt.Fprintln(os.Stderr, "aviso:", cfg.VoiceNote)
+	}
 	vs := voiceInput(cfg)
 	if vs.Warn != "" {
 		fmt.Fprintln(os.Stderr, vs.Warn)
@@ -384,6 +387,14 @@ func voiceInput(cfg config.Config) voiceSetup {
 				Reason: "falta el modelo de whisper",
 			}
 		}
+		// A .en model does not fail on another language: it transcribes it
+		// wrong, which is worse. Refuse and say which model to get.
+		if cfg.Target != "en" && strings.HasSuffix(strings.ToLower(cfg.WhisperModel), ".en.bin") {
+			return voiceSetup{
+				Warn:   fmt.Sprintf("aviso: %s solo transcribe inglés, así que no puedo transcribir %s; bajá el modelo multilingüe (ggml-small.bin) o pasá --whisper-model; el Enter vacío queda sin efecto", cfg.WhisperModel, cfg.Target),
+				Reason: "modelo de whisper solo inglés",
+			}
+		}
 		return voiceSetup{Rec: rec, Tr: voice.WhisperCPP{Bin: cfg.WhisperBin, Model: cfg.WhisperModel}}
 	default:
 		if cfg.STTKey == "" {
@@ -591,7 +602,8 @@ Enter vacío   hablar en vez de escribir (graba hasta el próximo Enter)`)
 		fmt.Println("conversación reiniciada")
 	case "/level":
 		lvl := strings.ToUpper(arg)
-		if _, ok := conv.LevelOf(lvl); ok {
+		// The scale is the same in every language: validate it against English.
+		if _, ok := conv.LevelOf("en", lvl); ok {
 			_ = store.Update(func(d *conv.Data) { d.Profile.Level = lvl })
 			fmt.Println("nivel:", lvl)
 		} else {
@@ -670,6 +682,10 @@ Enter vacío   hablar en vez de escribir (graba hasta el próximo Enter)`)
 			fmt.Printf("voz: %s · usa /voice femenina, /voice masculina o un nombre\n", cur)
 			return
 		}
+		if config.SingleVoiceModel(cfg.TTS) {
+			fmt.Printf("%s tiene una sola voz (la del modelo): /voice no cambia nada acá\n", cfg.TTS)
+			return
+		}
 		v := speech.ResolveVoice(arg)
 		spk.SetVoice(v)
 		if v != strings.TrimSpace(arg) {
@@ -704,7 +720,7 @@ func status(ctx context.Context, cl *ollama.Client, cfg config.Config, store *co
 	}
 	d := store.View()
 	nivel := d.Profile.Level
-	if p, ok := conv.LevelOf(nivel); ok {
+	if p, ok := conv.LevelOf(cfg.Target, nivel); ok {
 		nivel += " (" + p.Name + ")"
 	}
 	fmt.Printf("conversación: %d turnos, resumen de %d palabras, nivel %s\n", len(d.Turns), len(strings.Fields(d.Summary)), nivel)

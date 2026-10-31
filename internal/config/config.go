@@ -31,6 +31,8 @@ type Config struct {
 	User          string // learner name (empty = ask at startup)
 	StatePath     string // state file, or the base path each learner derives from
 	StateSet      bool   // true when --state named an exact file
+	TTSSet        bool   // true when --tts was given
+	STTLangSet    bool   // true when --stt-lang was given
 	Mute          bool
 	MemLimitMiB   int  // soft Go heap limit
 	SelfTest      bool // check the configured providers and exit
@@ -47,6 +49,7 @@ type Config struct {
 	STTBase      string
 	STTKeyEnv    string
 	STTKey       string
+	VoiceNote    string // set when a voice choice could not be applied
 	WhisperBin   string
 	WhisperModel string
 	RecordMaxSec int
@@ -147,14 +150,34 @@ func Parse(args []string) (Config, error) {
 	// Only an explicit --state keeps the single-file behaviour; the default
 	// path is a base that each learner derives their own directory from.
 	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "state" {
+		switch f.Name {
+		case "state":
 			c.StateSet = true
+		case "tts":
+			c.TTSSet = true
+		case "stt-lang":
+			c.STTLangSet = true
 		}
 	})
 	c.User = strings.TrimSpace(c.User)
 	c.Target = strings.ToLower(strings.TrimSpace(c.Target))
 	if c.Target != "en" && c.Target != "de" {
 		return c, fmt.Errorf("unknown target %q (use en or de)", c.Target)
+	}
+	// The language decides the voice model and the microphone language, unless
+	// the flag was given on purpose.
+	if !c.TTSSet && c.Target != "en" {
+		c.TTS = "phonon:" + c.Target
+	}
+	if !c.STTLangSet {
+		c.STTLang = c.Target
+	}
+	// The 40M checkpoints carry a single voice named "default": a measured
+	// alias (femenina/masculina) cannot apply, and sending it would fail at
+	// speech time.
+	if SingleVoiceModel(c.TTS) && c.Voice != "" && c.Voice != "default" {
+		c.VoiceNote = fmt.Sprintf("%s tiene una sola voz: uso la del modelo", c.TTS)
+		c.Voice = ""
 	}
 	c.STT = strings.ToLower(strings.TrimSpace(c.STT))
 	if c.STT != "groq" && c.STT != "whisper" && c.STT != "off" {
@@ -209,4 +232,20 @@ func Parse(args []string) (Config, error) {
 		}
 	}
 	return c, nil
+}
+
+// SingleVoiceModel reports whether a Phonon checkpoint carries only its
+// "default" voice. The 31M English model has the measured catalogue; the 40M
+// per-language and multilingual ones do not.
+func SingleVoiceModel(tts string) bool {
+	t := strings.ToLower(strings.TrimSpace(tts))
+	if !strings.HasPrefix(t, "phonon") {
+		return false
+	}
+	for _, tag := range []string{"de", "fr", "es", "pt", "multilingual", "40m-"} {
+		if strings.Contains(t, ":"+tag) {
+			return true
+		}
+	}
+	return false
 }

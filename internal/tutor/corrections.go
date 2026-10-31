@@ -294,7 +294,11 @@ func (t *Tutor) correctionRequest(text, level string, p correctionPolicy, spots 
 // without polluting the learner profile.
 func ProbeCorrections(ctx context.Context, lm llm.Chatter, st Settings) ([]Correction, error) {
 	t := New(lm, nil, st) // this path never uses the store
-	raw, err := t.chat(ctx, t.correctionRequest(ProbeSample, "B1", policyFor("B1"), nil))
+	sample := ProbeSample
+	if st.Target == "de" {
+		sample = ProbeSampleDE
+	}
+	raw, err := t.chat(ctx, t.correctionRequest(sample, "B1", policyFor("B1"), nil))
 	if err != nil {
 		return nil, err
 	}
@@ -306,6 +310,10 @@ func ProbeCorrections(ctx context.Context, lm llm.Chatter, st Settings) ([]Corre
 // unmistakable mistake (past simple), so an empty answer means the model is
 // not following the correction prompt.
 const ProbeSample = "Yesterday I go to the cinema with my friend."
+
+// ProbeSampleDE does the same in German: the verb is in the wrong position
+// (V2 violated), which any German teacher must catch.
+const ProbeSampleDE = "Gestern ich gehe ins Kino mit meinem Freund."
 
 // parseReview accepts the shapes seen in the wild:
 //  1. the documented object,

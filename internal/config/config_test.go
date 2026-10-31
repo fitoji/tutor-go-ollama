@@ -12,7 +12,7 @@ func clean(t *testing.T) {
 	for _, k := range []string{
 		"SPEAKEASY_PROVIDER", "SPEAKEASY_LLM", "SPEAKEASY_API_BASE", "SPEAKEASY_API_KEY_ENV",
 		"SPEAKEASY_TTS", "SPEAKEASY_VOICE", "SPEAKEASY_NUM_CTX", "SPEAKEASY_KEEP_ALIVE", "SPEAKEASY_NOTES",
-		"SPEAKEASY_USER", "SPEAKEASY_TARGET", "OLLAMA_HOST", "GROQ_API_KEY", "XAI_API_KEY", "LLM_API_KEY", "MY_KEY",
+		"SPEAKEASY_USER", "SPEAKEASY_TARGET", "SPEAKEASY_STT_LANG", "OLLAMA_HOST", "GROQ_API_KEY", "XAI_API_KEY", "LLM_API_KEY", "MY_KEY",
 	} {
 		t.Setenv(k, "")
 	}
@@ -210,5 +210,60 @@ func TestTargetLanguage(t *testing.T) {
 	t.Setenv("SPEAKEASY_TARGET", "de")
 	if c, err := Parse(nil); err != nil || c.Target != "de" {
 		t.Errorf("target from env: %+v %v", c, err)
+	}
+}
+
+// TestLanguageDrivesVoiceAndMic is T4: the target picks the voice model and the
+// microphone language, and an explicit flag still wins.
+func TestLanguageDrivesVoiceAndMic(t *testing.T) {
+	clean(t)
+	t.Setenv("GROQ_API_KEY", "k")
+
+	c, err := Parse([]string{"--target", "de"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.TTS != "phonon:de" || c.STTLang != "de" {
+		t.Errorf("german defaults: tts=%q sttLang=%q", c.TTS, c.STTLang)
+	}
+
+	// Explicit wins over the derived default.
+	c, err = Parse([]string{"--target", "de", "--tts", "phonon:multilingual", "--stt-lang", "en"})
+	if err != nil || c.TTS != "phonon:multilingual" || c.STTLang != "en" {
+		t.Errorf("explicit: %+v %v", c, err)
+	}
+
+	// English keeps what it had.
+	c, err = Parse(nil)
+	if err != nil || c.TTS != "phonon" || c.STTLang != "en" {
+		t.Errorf("english defaults: %+v %v", c, err)
+	}
+}
+
+// TestSingleVoiceModelExplainsItself keeps /voice honest on the 40M checkpoints.
+func TestSingleVoiceModelExplainsItself(t *testing.T) {
+	clean(t)
+	t.Setenv("GROQ_API_KEY", "k")
+	c, err := Parse([]string{"--target", "de", "--voice", "femenina"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Voice != "" || !strings.Contains(c.VoiceNote, "una sola voz") {
+		t.Errorf("german voice: %q note=%q", c.Voice, c.VoiceNote)
+	}
+	// The English model still accepts the measured alias.
+	c, err = Parse([]string{"--voice", "femenina"})
+	if err != nil || c.Voice != "Freya" || c.VoiceNote != "" {
+		t.Errorf("english voice: %+v %v", c, err)
+	}
+	for _, tts := range []string{"phonon:de", "phonon:fr", "phonon:multilingual", "phonon:40m-es"} {
+		if !SingleVoiceModel(tts) {
+			t.Errorf("%s should be single-voice", tts)
+		}
+	}
+	for _, tts := range []string{"phonon", "phonon:latest", "phonon:en", "say"} {
+		if SingleVoiceModel(tts) {
+			t.Errorf("%s should not be single-voice", tts)
+		}
 	}
 }

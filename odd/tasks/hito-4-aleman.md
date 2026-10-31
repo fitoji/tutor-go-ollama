@@ -25,7 +25,7 @@ Branch: `main`. Delivery: work-unit commits. Runner: `go test -race ./...`. Esta
 | T1 | S2 | inline: ruta por idioma + copia del perfil actual a `en/` (riesgo: datos guardados) | **hecho** |
 | T2 | S1, S3, S4 | inline: `--target` atravesando tutor, revisión, resumen | **hecho** |
 | T3 | S5 | inline: perfiles MCER de alemán, desde el temario documentado | **hecho** |
-| T4 | S6, S7 | inline: default de voz y STT por idioma + validaciones | pendiente |
+| T4 | S6, S7 | inline: default de voz y STT por idioma + validaciones | **hecho** |
 | T5 | S8 | docs: README, `/help`, una persona de ejemplo en alemán | pendiente |
 | T6 | S9 | inline: VAD por bloques en `internal/voice` + `--vad` + tests con PCM sintético | pendiente |
 | T7 | S10 | inline: `SaySynth` en `internal/speech` + `--tts-backend`/`--say-voice` | pendiente |
@@ -55,3 +55,5 @@ Branch: `main`. Delivery: work-unit commits. Runner: `go test -race ./...`. Esta
 **L11** — T2 hecho: el idioma atraviesa las reglas del tutor, el resumen y la revisión (`conv.LanguageName`, plantillas en `tutorRules`/`summaryPrompt`, "a German teacher" en la revisión). Con `--target de` el perfil MCER inglés **no** se inyecta (solo el largo de respuesta) para no enseñar gramática inglesa: eso llega en T3. Verificado con qwen3.5:9b: responde en alemán.
 
 **L12** — T3 hecho: `levelProfiles` pasó a ser por idioma (`en`, `de`), con los seis niveles alemanes del temario y la gramática en términos alemanes (Präsens, Perfekt, Akkusativ, Konjunktiv II). Un idioma sin perfil cae al nivel pelado más el largo de respuesta, nunca a la gramática inglesa. Test nuevo: el perfil alemán existe en los seis niveles y no contiene gramática inglesa.
+
+**L13** — T4 hecho: `--target de` deriva `--tts phonon:de` y `--stt-lang de` (los flags explícitos ganan), los modelos de una sola voz avisan en vez de mandar un alias inexistente, y `--stt whisper` con un `.en` se niega a grabar en otro idioma. Además el probe de `--selftest` ahora usa una frase alemana con error (`Gestern ich gehe…` → `Gestern ging ich…`). `phonon:de` descargado (122 MB) y selftest alemán en verde: voz, chat y correcciones.

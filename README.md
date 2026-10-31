@@ -183,6 +183,7 @@ Detalles que importan:
 - **Sin VAD**: si no hablás, la app detecta el silencio y dice `no entendí nada` en vez de mandarle ruido al tutor.
 - **Groq factura mínimo 10 s por request**, así que una frase de 3 s cuesta lo mismo que una de 10 (~$0.0001 con `turbo`).
 - La grabación la hace `ffmpeg` con `avfoundation`; si el índice del micrófono no es el 0, `ffmpeg -f avfoundation -list_devices true -i ""` los lista.
+- **Con `--target de` el idioma del micrófono pasa a `de`** (si no pasás `--stt-lang`). Y si usás `--stt whisper` con el modelo `.en`, la app se niega a grabar: ese modelo no falla en alemán, **inventa** palabras. Hay que bajar `ggml-small.bin` (multilingüe) y pasarlo por `--whisper-model`.
 - **Ojo**: `ollama pull mannix/whisper` no sirve. Ese modelo está hecho para *xOllama*, no para Ollama stock: lo baja y no lo puede correr.
 
 ### Sin red: whisper local
@@ -264,6 +265,8 @@ La voz la sirve Phonon desde Ollama. `--voice` acepta dos atajos o el nombre exa
 ```
 
 Sin `--voice` suena la voz por defecto del modelo: masculina, ~108 Hz.
+
+**Otros idiomas.** Con `--target de` la voz pasa a `phonon:de` automáticamente (si no pasás `--tts` a mano). Los checkpoints de 40M —`de`, `fr`, `es`, `pt`, `multilingual`— traen **una sola voz**, `default`: los alias `femenina`/`masculina` no aplican, y la app avisa en vez de mandar una voz que no existe. Ojo con la licencia: el inglés 31M es Apache 2.0, los 40M son **CC BY-NC 4.0** (no comercial).
 
 Los atajos no son nombres adivinados: sinteticé una muestra con las 38 voces de Phonon y medí el tono fundamental. Las femeninas quedan entre 170 y 210 Hz y las masculinas entre 78 y 158 Hz, así que el corte es claro.
 

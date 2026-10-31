@@ -1076,3 +1076,40 @@ func TestPickLearnerUsesTheTargetLanguage(t *testing.T) {
 		t.Errorf("explicit state: %q %v", path, err)
 	}
 }
+
+// TestVoiceInputRefusesAnEnglishOnlyWhisperModel: a .en model does not fail on
+// German, it invents words, so the pipeline stays off and says why.
+func TestVoiceInputRefusesAnEnglishOnlyWhisperModel(t *testing.T) {
+	model := filepath.Join(t.TempDir(), "ggml-small.en.bin")
+	if err := os.WriteFile(model, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	vs := voiceInput(config.Config{STT: "whisper", WhisperBin: "sh", WhisperModel: model, Target: "de"})
+	if vs.Rec != nil || vs.Reason != "modelo de whisper solo inglés" {
+		t.Errorf("german with an .en model: %+v", vs)
+	}
+	// English is fine with it.
+	vs = voiceInput(config.Config{STT: "whisper", WhisperBin: "sh", WhisperModel: model, Target: "en"})
+	if vs.Rec == nil || vs.Reason != "" {
+		t.Errorf("english with an .en model: %+v", vs)
+	}
+}
+
+// TestCommandVoiceExplainsASingleVoiceModel keeps /voice from pretending.
+func TestCommandVoiceExplainsASingleVoiceModel(t *testing.T) {
+	store := newStore(t)
+	tut := tutor.New(nil, store, tutor.Settings{})
+	cfg := statusConfig()
+	cfg.TTS = "phonon:de"
+	spk := speech.NewSpeaker(nil, nil, "phonon:de", "", nil)
+
+	out, _ := capture(t, func() {
+		command(context.Background(), "/voice femenina", ollama.New("http://127.0.0.1:1"), cfg, store, tut, spk)
+	})
+	if !strings.Contains(out, "una sola voz") {
+		t.Errorf("output: %q", out)
+	}
+	if spk.Voice() != "" {
+		t.Errorf("the voice must not change: %q", spk.Voice())
+	}
+}
