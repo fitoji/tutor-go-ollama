@@ -19,7 +19,7 @@ Escribes en inglés (o en español; el tutor siempre responde en inglés). Mient
 
 Al arrancar te pregunta quién sos (`usuario:`); con Enter mantiene el último. Cada nombre guarda su propio nivel y sus propios errores, así que dos personas pueden compartir la máquina sin pisarse el perfil (ver [Un perfil por persona](#un-perfil-por-persona)).
 
-Comandos: `/reset`, `/level B2`, `/topic cine`, `/forget city`, `/voice femenina`, `/status`, `/quit`. Con el micrófono configurado, **Enter vacío** graba.
+Comandos: `/reset`, `/level B2`, `/topic cine`, `/forget city`, `/voice femenina`, `/persona slang`, `/status`, `/quit`. Con el micrófono configurado, **Enter vacío** graba.
 
 ## Proveedores
 
@@ -294,6 +294,20 @@ Con el mismo mensaje que siempre:
 > ↻ I went to the cinema yesterday and it was better than staying home.
 
 El slang cambia la voz, no las correcciones: siguen saliendo con el nivel y la exigencia de siempre.
+
+### Cambiar de tutor en plena sesión
+
+`/persona` sin argumento muestra cuál está sonando y cuáles hay; `/persona slang-americano` cambia la voz **y** su compañera de correcciones sin reiniciar; `/persona off` vuelve al de fábrica.
+
+```
+tú> /persona
+voz: de fábrica · correcciones: de fábrica
+disponibles: slang-americano · o pasá una ruta a un .md
+tú> /persona slang-americano
+voz: You are a native American English speaker … · correcciones: You are that friend who roasts you every t…
+```
+
+Busca en `~/.speakeasy/personas/` (los dos ejemplos ya están copiados ahí) y acepta también una ruta: `/persona ./personas/mi-tutor.md`. Si el archivo tiene un `<nombre>-review.md` al lado, lo carga como tono de las correcciones.
 
 ### Correcciones con chicana
 

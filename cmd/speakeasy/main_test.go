@@ -930,3 +930,86 @@ func TestVoiceInput(t *testing.T) {
 		t.Errorf("enabled: %v %v %q", rec, tr, warn)
 	}
 }
+
+// TestResolvePersona pins the name/path/off shapes of /persona.
+func TestResolvePersona(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "personas"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pdir := filepath.Join(dir, "personas")
+	for _, name := range []string{"slang.md", "slang-review.md", "cowboy.md"} {
+		if err := os.WriteFile(filepath.Join(pdir, name), []byte("You are.\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	voice, review, err := resolvePersona(pdir, "slang")
+	if err != nil || !strings.HasSuffix(voice, "slang.md") || !strings.HasSuffix(review, "slang-review.md") {
+		t.Errorf("name: %q %q %v", voice, review, err)
+	}
+	// A persona without a companion leaves corrections neutral.
+	voice, review, err = resolvePersona(pdir, "cowboy")
+	if err != nil || review != "" {
+		t.Errorf("no companion: %q %q %v", voice, review, err)
+	}
+	// An explicit path wins over the directory.
+	voice, _, err = resolvePersona(pdir, filepath.Join(pdir, "cowboy.md"))
+	if err != nil || !strings.HasSuffix(voice, "cowboy.md") {
+		t.Errorf("path: %q %v", voice, err)
+	}
+	// off resets both.
+	if voice, review, err = resolvePersona(pdir, "off"); err != nil || voice != "" || review != "" {
+		t.Errorf("off: %q %q %v", voice, review, err)
+	}
+	// A missing name lists what is there.
+	if _, _, err := resolvePersona(pdir, "nope"); err == nil || !strings.Contains(err.Error(), "cowboy, slang") {
+		t.Errorf("missing: %v", err)
+	}
+}
+
+// TestCommandPersonaSwitchesTheVoice is the in-session switch: one command, both
+// prompts, no restart.
+func TestCommandPersonaSwitchesTheVoice(t *testing.T) {
+	dir := t.TempDir()
+	pdir := filepath.Join(dir, "personas")
+	if err := os.MkdirAll(pdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pdir, "slang.md"), []byte("docs\n---\nYou are a surfer. Say dude.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pdir, "slang-review.md"), []byte("Roast them.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	store := newStore(t)
+	tut := tutor.New(nil, store, tutor.Settings{})
+	cfg := statusConfig()
+	cfg.Persona = filepath.Join(dir, "tutor.md")
+	cl := ollama.New("http://127.0.0.1:1")
+
+	out, _ := capture(t, func() { command(context.Background(), "/persona", cl, cfg, store, tut, nil) })
+	if !strings.Contains(out, "de fábrica") || !strings.Contains(out, "disponibles: slang") {
+		t.Errorf("list: %q", out)
+	}
+
+	out, _ = capture(t, func() { command(context.Background(), "/persona slang", cl, cfg, store, tut, nil) })
+	voice, review := tut.Personas()
+	if !strings.Contains(voice, "Say dude") || !strings.Contains(review, "Roast them") {
+		t.Errorf("switch: %q / %q", voice, review)
+	}
+	if !strings.Contains(out, "Say dude") {
+		t.Errorf("output: %q", out)
+	}
+
+	capture(t, func() { command(context.Background(), "/persona off", cl, cfg, store, tut, nil) })
+	if voice, review := tut.Personas(); voice != "" || review != "" {
+		t.Errorf("off: %q %q", voice, review)
+	}
+
+	out, _ = capture(t, func() { command(context.Background(), "/persona nope", cl, cfg, store, tut, nil) })
+	if !strings.Contains(out, "no encuentro") {
+		t.Errorf("missing: %q", out)
+	}
+}

@@ -656,7 +656,7 @@ func TestMnemonicIsAskedOnlyOnce(t *testing.T) {
 func TestReviewPersonaSetsTheToneOfTheNotes(t *testing.T) {
 	f := &fakeOllama{json: `{"corrections":[],"facts":[]}`}
 	tut, _ := setup(t, f, 8192)
-	tut.st.ReviewPersona = "Roast them affectionately."
+	tut.SetPersonas("", "Roast them affectionately.")
 
 	if _, err := tut.Correct(context.Background(), "I have went to the cinema"); err != nil {
 		t.Fatal(err)
@@ -684,5 +684,24 @@ func TestNoReviewPersonaKeepsTheNeutralNote(t *testing.T) {
 	}
 	if !strings.Contains(sys, "at most 12 words") {
 		t.Errorf("the neutral note keeps its 12-word limit:\n%s", sys)
+	}
+}
+
+// TestSetPersonasChangesTheNextPrompt is the runtime switch seen from the model
+// side: the next reply must carry the new style.
+func TestSetPersonasChangesTheNextPrompt(t *testing.T) {
+	f := &fakeOllama{reply: []string{"Hey there."}}
+	tut, _ := setup(t, f, 8192)
+	tut.SetPersonas("You are a surfer. Say dude.", "Roast them.")
+
+	if _, err := tut.Reply(context.Background(), "hello", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	sys := f.requests()[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if !strings.Contains(sys, "Say dude") {
+		t.Errorf("the new persona is missing:\n%s", sys)
+	}
+	if voice, review := tut.Personas(); !strings.Contains(voice, "surfer") || review != "Roast them." {
+		t.Errorf("Personas = %q / %q", voice, review)
 	}
 }

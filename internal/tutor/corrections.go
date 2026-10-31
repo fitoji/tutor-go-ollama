@@ -270,12 +270,18 @@ func (t *Tutor) Correct(ctx context.Context, text string) (Review, error) {
 	return rev, nil
 }
 
+// review returns the live review persona.
+func (t *Tutor) review() string {
+	_, r := t.Personas()
+	return r
+}
+
 // correctionRequest builds the review request for a level and its policy.
 // ProbeCorrections reuses it so that --selftest probes exactly what production
 // sends for a new learner.
 func (t *Tutor) correctionRequest(text, level string, p correctionPolicy, spots []troubleSpot) llm.Request {
 	msgs := []llm.Message{
-		{Role: "system", Content: correctionSystem(level, p, t.st.NotesLang, spots, t.st.ReviewPersona)},
+		{Role: "system", Content: correctionSystem(level, p, t.st.NotesLang, spots, t.review())},
 		{Role: "user", Content: "Learner message: " + text},
 	}
 	req := t.request(msgs, 0, p.Tokens)

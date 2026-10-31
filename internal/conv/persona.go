@@ -3,6 +3,7 @@ package conv
 import (
 	"errors"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -23,4 +24,29 @@ func LoadPersona(path string) (string, error) {
 		text = text[i+len("\n---\n"):]
 	}
 	return strings.TrimSpace(text), nil
+}
+
+// ListPersonas returns the names of the persona files in dir, without the .md
+// and without the -review companions: those belong to their main persona.
+func ListPersonas(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name(), ".md")
+		if strings.HasSuffix(name, "-review") {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
 }

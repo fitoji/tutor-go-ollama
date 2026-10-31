@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -363,6 +364,46 @@ func voiceInput(cfg config.Config) (rec voice.Recorder, tr voice.Transcriber, wa
 	}
 }
 
+// personaLabel names a persona by its first line, or the built-in default.
+func personaLabel(persona string) string {
+	if strings.TrimSpace(persona) == "" {
+		return "de fábrica"
+	}
+	first := strings.TrimSpace(strings.SplitN(persona, "\n", 2)[0])
+	if r := []rune(first); len(r) > 42 {
+		first = string(r[:42]) + "…"
+	}
+	return first
+}
+
+// resolvePersona turns a name or a path into the two files to load: the voice
+// and, when it exists, its -review companion. "off" resets both to the built-in
+// defaults.
+func resolvePersona(dir, arg string) (voice, review string, err error) {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		return "", "", errors.New("uso: /persona <nombre|ruta> (sin argumento lista las disponibles)")
+	}
+	if arg == "off" || arg == "neutral" {
+		return "", "", nil
+	}
+	base := arg
+	if !strings.ContainsAny(arg, "/\\") && !strings.HasSuffix(arg, ".md") {
+		base = filepath.Join(dir, arg+".md")
+	}
+	if _, statErr := os.Stat(base); statErr != nil {
+		if names, _ := conv.ListPersonas(dir); len(names) > 0 {
+			return "", "", fmt.Errorf("no encuentro %s; disponibles: %s", base, strings.Join(names, ", "))
+		}
+		return "", "", fmt.Errorf("no encuentro %s", base)
+	}
+	rev := strings.TrimSuffix(base, ".md") + "-review.md"
+	if _, statErr := os.Stat(rev); statErr == nil {
+		review = rev
+	}
+	return base, review, nil
+}
+
 // micLabel names the transcription backend, or off.
 func micLabel(cfg config.Config, rec voice.Recorder) string {
 	if rec == nil {
@@ -505,6 +546,7 @@ func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Con
 /topic X      añadir un tema de interés
 /forget clave olvidar un dato que el tutor guardó (ej: /forget city)
 /voice femenina  cambiar la voz (femenina, masculina o un nombre de ollama show phonon)
+/persona slang   cambiar la voz del tutor (sin argumento: lista las disponibles)
 /status       modelo, memoria usada y estado de la conversación
 /quit         salir
 
@@ -542,6 +584,44 @@ Enter vacío   hablar en vez de escribir (graba hasta el próximo Enter)`)
 		} else {
 			fmt.Printf("no tenía nada guardado con la clave %q\n", arg)
 		}
+	case "/persona":
+		dir := filepath.Join(filepath.Dir(cfg.Persona), "personas")
+		if arg == "" {
+			voice, review := tut.Personas()
+			fmt.Printf("voz: %s · correcciones: %s\n", personaLabel(voice), personaLabel(review))
+			names, err := conv.ListPersonas(dir)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				return
+			}
+			if len(names) == 0 {
+				fmt.Printf("no hay personas en %s (copiá un .md ahí)\n", dir)
+			} else {
+				fmt.Printf("disponibles: %s · o pasá una ruta a un .md\n", strings.Join(names, ", "))
+			}
+			return
+		}
+		voicePath, reviewPath, err := resolvePersona(dir, arg)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		voice, err := conv.LoadPersona(voicePath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return
+		}
+		review, err := conv.LoadPersona(reviewPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return
+		}
+		if voicePath != "" && voice == "" {
+			fmt.Printf("la persona %q está vacía (¿te falta el cuerpo después de ---?)\n", arg)
+			return
+		}
+		tut.SetPersonas(voice, review)
+		fmt.Printf("voz: %s · correcciones: %s\n", personaLabel(voice), personaLabel(review))
 	case "/voice":
 		if spk == nil {
 			fmt.Println("estás sin voz: arrancaste con --mute")

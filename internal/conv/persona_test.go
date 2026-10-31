@@ -54,3 +54,24 @@ func TestSystemFallsBackToTheBuiltInStyle(t *testing.T) {
 		t.Errorf("the default style is missing:\n%s", sys)
 	}
 }
+
+// TestListPersonasSkipsTheReviewCompanions keeps the menu clean: a -review file
+// belongs to its main persona, it is not its own choice.
+func TestListPersonasSkipsTheReviewCompanions(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"slang.md", "slang-review.md", "cowboy.md", "notes.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	names, err := ListPersonas(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(names, ",") != "cowboy,slang" {
+		t.Errorf("names = %v", names)
+	}
+	if got, err := ListPersonas(filepath.Join(dir, "missing")); err != nil || got != nil {
+		t.Errorf("missing dir: %v %v", got, err)
+	}
+}

@@ -60,10 +60,30 @@ type Tutor struct {
 	wg         sync.WaitGroup
 	noThink    atomic.Bool
 	lastPrompt atomic.Int64
+
+	// persona and reviewPersona can change mid-session; mu guards them.
+	personaMu     sync.RWMutex
+	persona       string
+	reviewPersona string
 }
 
 func New(lm llm.Chatter, store *conv.Store, st Settings) *Tutor {
-	return &Tutor{lm: lm, store: store, st: st}
+	return &Tutor{lm: lm, store: store, st: st, persona: st.Persona, reviewPersona: st.ReviewPersona}
+}
+
+// SetPersonas replaces the tutor's voice and the tone of the correction notes
+// while the session runs. Empty strings mean the built-in defaults.
+func (t *Tutor) SetPersonas(persona, review string) {
+	t.personaMu.Lock()
+	t.persona, t.reviewPersona = persona, review
+	t.personaMu.Unlock()
+}
+
+// Personas returns what is in use now.
+func (t *Tutor) Personas() (persona, review string) {
+	t.personaMu.RLock()
+	defer t.personaMu.RUnlock()
+	return t.persona, t.reviewPersona
 }
 
 // LastPromptTokens is the prompt size of the most recent reply (0 if the
@@ -151,7 +171,8 @@ func (t *Tutor) Reply(ctx context.Context, user string, out io.Writer, v Voice) 
 	}
 	drop := func() { _ = t.store.Update(func(d *conv.Data) { d.DropLastTurn("user") }) }
 
-	msgs := toMessages(conv.Build(t.store.View(), t.st.Persona, t.st.NumCtx, ReplyReserve))
+	persona, _ := t.Personas()
+	msgs := toMessages(conv.Build(t.store.View(), persona, t.st.NumCtx, ReplyReserve))
 	var sp speech.Splitter
 	var full strings.Builder
 	stats, err := t.stream(ctx, t.request(msgs, 0.7, ReplyReserve), func(delta string) error {
