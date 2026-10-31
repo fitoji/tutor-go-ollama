@@ -1144,3 +1144,43 @@ func TestCommandVAD(t *testing.T) {
 		t.Errorf("no recorder: %q", out)
 	}
 }
+
+// TestCommandProgress prints the period and never needs the model to do it.
+func TestCommandProgress(t *testing.T) {
+	store := newStore(t)
+	store.Update(func(d *conv.Data) {
+		d.AddTurn("user", "hello")
+		d.AddTurn("assistant", "hi")
+		d.RecordMistake("past simple")
+		d.RecordMistake("past simple")
+		d.SetFact("city", "Madrid")
+	})
+	tut := tutor.New(nil, store, tutor.Settings{})
+	cfg := statusConfig()
+	cfg.ProgressSummary = false // no model in this test
+	cl := ollama.New("http://127.0.0.1:1")
+
+	out, _ := capture(t, func() { command(context.Background(), "/progress", cl, cfg, store, tut, nil, nil) })
+	for _, want := range []string{"progreso · semana", "1 día activo", "racha 1", "turnos: 2", "past simple ×2", "datos aprendidos: 1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("progress should contain %q:\n%s", want, out)
+		}
+	}
+
+	out, _ = capture(t, func() { command(context.Background(), "/progress month", cl, cfg, store, tut, nil, nil) })
+	if !strings.Contains(out, "progreso · mes") {
+		t.Errorf("month: %q", out)
+	}
+	out, _ = capture(t, func() { command(context.Background(), "/progress year", cl, cfg, store, tut, nil, nil) })
+	if !strings.Contains(out, "period inválido") {
+		t.Errorf("invalid period: %q", out)
+	}
+	// An empty profile still answers.
+	empty := newStore(t)
+	out, _ = capture(t, func() {
+		command(context.Background(), "/progress", cl, cfg, empty, tutor.New(nil, empty, tutor.Settings{}), nil, nil)
+	})
+	if !strings.Contains(out, "turnos: 0") || !strings.Contains(out, "ninguno todavía") {
+		t.Errorf("empty: %q", out)
+	}
+}

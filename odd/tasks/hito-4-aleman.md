@@ -28,7 +28,7 @@ Branch: `main`. Delivery: work-unit commits. Runner: `go test -race ./...`. Esta
 | T4 | S6, S7 | inline: default de voz y STT por idioma + validaciones | **hecho** |
 | T5 | S8 | docs: README, `/help`, una persona de ejemplo en alemán | **hecho** |
 | T6 | S9 | inline: VAD por bloques en `internal/voice` + `--vad` + tests con PCM sintético | **hecho** |
-| T7 | S10 | inline: `SaySynth` en `internal/speech` + `--tts-backend`/`--say-voice` | pendiente |
+| T7 | S10 | inline: `SaySynth` en `internal/speech` + `--tts-backend`/`--say-voice` | **diferido** |
 
 ## Log
 
@@ -61,3 +61,7 @@ Branch: `main`. Delivery: work-unit commits. Runner: `go test -race ./...`. Esta
 **L14** — T5 hecho, con un agregado pedido por el usuario: en **A1 alemán el tutor da una lección, no una charla**. El modo lo activa el nivel (no un flag ni una persona): una palabra o frase por turno, la dice, pide repetirla (`Sprich nach: …`) y avanza por saludos, «Ich heiße…», números, días y «Ich komme aus…». Sin gramática y sin slang, y solo en alemán (la voz es el checkpoint alemán). Verificado con qwen3.5:9b: dos turnos seguidos de lección. Persona de ejemplo en `personas/deutsch.md`.
 
 **L15** — T6 hecho: `--vad <ms>` (default 800, 0 apaga), VAD por energía sobre bloques de 100 ms, y no corta hasta haber escuchado voz. `loud()` se separó de `Silent()` porque el mínimo de 0.2 s hace que todo bloque corto parezca silencio. El recorder pasó de juntar stdout a leerlo por bloques y **cerrar el pipe** al terminar: un nieto que lo retiene colgaba la sesión (lo descubrió un test con un ffmpeg falso, que saqué).
+
+**L16** (usuario, textual): «deja esto para mas adelante», sobre T7.
+
+**L17** — El hito 4 se cierra con T1–T6 hechos y **T7 diferido**: `say` no hace falta para inglés ni alemán (`phonon:de` existe) y solo destraba el italiano o el uso sin Ollama. Se retoma cuando el italiano entre en el horizonte, o como parte del hito que lo agregue. El plan queda como está: cuando se implemente, es un archivo nuevo en `internal/speech` más dos flags.

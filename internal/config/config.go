@@ -15,27 +15,28 @@ import (
 )
 
 type Config struct {
-	Host          string // Ollama base URL (also hosts the voice model)
-	Provider      string // ollama, groq, xai or custom
-	LLM           string // chat model
-	TTS           string // speech model (always served by Ollama)
-	Voice         string
-	NumCtx        int    // prompt budget in tokens; for Ollama also its num_ctx
-	KeepAlive     string // how long Ollama keeps the LLM loaded
-	Think         bool   // allow thinking mode (Ollama only)
-	Corrections   bool   // run the correction pass
-	NotesLang     string // language of the short correction notes
-	Target        string // language being practised: en or de
-	Persona       string // file that replaces the tutor's style
-	ReviewPersona string // file that sets the tone of the correction notes
-	User          string // learner name (empty = ask at startup)
-	StatePath     string // state file, or the base path each learner derives from
-	StateSet      bool   // true when --state named an exact file
-	TTSSet        bool   // true when --tts was given
-	STTLangSet    bool   // true when --stt-lang was given
-	Mute          bool
-	MemLimitMiB   int  // soft Go heap limit
-	SelfTest      bool // check the configured providers and exit
+	Host            string // Ollama base URL (also hosts the voice model)
+	Provider        string // ollama, groq, xai or custom
+	LLM             string // chat model
+	TTS             string // speech model (always served by Ollama)
+	Voice           string
+	NumCtx          int    // prompt budget in tokens; for Ollama also its num_ctx
+	KeepAlive       string // how long Ollama keeps the LLM loaded
+	Think           bool   // allow thinking mode (Ollama only)
+	Corrections     bool   // run the correction pass
+	NotesLang       string // language of the short correction notes
+	Target          string // language being practised: en or de
+	Persona         string // file that replaces the tutor's style
+	ReviewPersona   string // file that sets the tone of the correction notes
+	User            string // learner name (empty = ask at startup)
+	StatePath       string // state file, or the base path each learner derives from
+	StateSet        bool   // true when --state named an exact file
+	TTSSet          bool   // true when --tts was given
+	STTLangSet      bool   // true when --stt-lang was given
+	Mute            bool
+	MemLimitMiB     int  // soft Go heap limit
+	SelfTest        bool // check the configured providers and exit
+	ProgressSummary bool // ask the model for the /progress note
 
 	APIBase   string // OpenAI-compatible base URL (remote providers)
 	APIKeyEnv string // name of the environment variable holding the key
@@ -137,6 +138,7 @@ func Parse(args []string) (Config, error) {
 	fs.BoolVar(&c.Mute, "mute", false, "text only, no voice")
 	fs.IntVar(&c.MemLimitMiB, "mem-limit", 256, "soft memory limit for this process, in MiB")
 	fs.BoolVar(&c.SelfTest, "selftest", false, "check the configured chat, corrections and voice, then exit")
+	fs.BoolVar(&c.ProgressSummary, "progress-summary", true, "ask the model for the short note in /progress")
 	fs.StringVar(&c.STT, "stt", envOr("SPEAKEASY_STT", "groq"), "speech to text: groq, whisper (local) or off (Enter on an empty line records)")
 	fs.StringVar(&c.STTModel, "stt-model", envOr("SPEAKEASY_STT_MODEL", "whisper-large-v3-turbo"), "transcription model")
 	fs.StringVar(&c.STTLang, "stt-lang", envOr("SPEAKEASY_STT_LANG", "en"), "language you speak, ISO-639-1 (empty = guess)")

@@ -12,11 +12,13 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 )
 
 const (
 	maxTurnsOnDisk = 200
+	maxEvents      = 1000
 	maxMistakes    = 30
 	maxTopics      = 5
 	maxFacts       = 40
@@ -27,6 +29,18 @@ const (
 type Turn struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+	// At is when the turn happened. Turns stored before this existed have no
+	// timestamp and stay out of the time-based stats.
+	At time.Time `json:"at,omitempty"`
+}
+
+// Event is one dated thing that happened, for the progress view. Turns are
+// already dated in Data.Turns; the counters (mistakes, facts, mnemonics) are
+// not, so they leave a trail here.
+type Event struct {
+	At   time.Time `json:"at"`
+	Kind string    `json:"kind"` // mistake, fact, mnemonic
+	Key  string    `json:"key"`
 }
 
 type Profile struct {
@@ -43,12 +57,15 @@ type Data struct {
 	// Epoch increases on every Reset so that background work started before a
 	// reset (e.g. a summary) cannot be applied to the fresh conversation.
 	Epoch int `json:"epoch"`
+	// Events is a bounded trail of dated mistakes, facts and mnemonics: the
+	// counters alone cannot answer "this week".
+	Events []Event `json:"events,omitempty"`
 }
 
 // AddTurn appends a turn, dropping the oldest if the hard cap is exceeded
 // (a safety net for when summarization keeps failing).
 func (d *Data) AddTurn(role, content string) {
-	d.Turns = append(d.Turns, Turn{Role: role, Content: content})
+	d.Turns = append(d.Turns, Turn{Role: role, Content: content, At: time.Now().UTC()})
 	if over := len(d.Turns) - maxTurnsOnDisk; over > 0 {
 		d.Turns = append([]Turn(nil), d.Turns[over:]...)
 	}
@@ -86,6 +103,14 @@ func (d *Data) FoldSummary(summary string, n, epoch int) bool {
 	return true
 }
 
+// AddEvent appends a dated event, dropping the oldest when the trail is full.
+func (d *Data) AddEvent(kind, key string) {
+	d.Events = append(d.Events, Event{At: time.Now().UTC(), Kind: kind, Key: key})
+	if over := len(d.Events) - maxEvents; over > 0 {
+		d.Events = append([]Event(nil), d.Events[over:]...)
+	}
+}
+
 // RecordMistake counts a recurring issue by a short normalized key.
 func (d *Data) RecordMistake(note string) {
 	key := strings.ToLower(strings.TrimSpace(note))
@@ -99,6 +124,7 @@ func (d *Data) RecordMistake(note string) {
 		d.Profile.Mistakes = map[string]int{}
 	}
 	d.Profile.Mistakes[key]++
+	d.AddEvent("mistake", key)
 	for len(d.Profile.Mistakes) > maxMistakes {
 		// Evict the least frequent entry, but never the one just recorded:
 		// otherwise a new category that sorts first would evict itself every
@@ -158,17 +184,23 @@ func (d *Data) SetFact(key, value string) bool {
 	if d.Profile.Facts == nil {
 		d.Profile.Facts = map[string]string{}
 	}
+	kind := "fact"
+	if strings.HasPrefix(key, MnemonicPrefix) {
+		kind = "mnemonic"
+	}
 	if old, ok := d.Profile.Facts[key]; ok {
 		if old == value {
 			return false
 		}
 		d.Profile.Facts[key] = value
+		d.AddEvent(kind, key)
 		return true
 	}
 	if len(d.Profile.Facts) >= maxFacts {
 		return false
 	}
 	d.Profile.Facts[key] = value
+	d.AddEvent(kind, key)
 	return true
 }
 
@@ -286,6 +318,7 @@ func (s *Store) View() Data {
 			c.Profile.Mistakes[k] = v
 		}
 	}
+	c.Events = append([]Event(nil), s.d.Events...)
 	if s.d.Profile.Facts != nil {
 		c.Profile.Facts = make(map[string]string, len(s.d.Profile.Facts))
 		for k, v := range s.d.Profile.Facts {

@@ -1,6 +1,7 @@
 package conv
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -323,5 +324,80 @@ func TestSystemSeparatesMnemonicsFromFacts(t *testing.T) {
 	facts := strings.SplitN(sys, "Mnemonics", 2)[0]
 	if strings.Contains(facts, "mnemonic-") {
 		t.Errorf("a mnemonic leaked into the facts list:\n%s", facts)
+	}
+}
+
+// TestTurnsCarryWhenTheyHappened is T1: without a date, no period can be
+// counted.
+func TestTurnsCarryWhenTheyHappened(t *testing.T) {
+	d := Data{Profile: Profile{Level: "B1"}}
+	d.AddTurn("user", "hello")
+	if d.Turns[0].At.IsZero() {
+		t.Error("a new turn must carry its timestamp")
+	}
+	// A turn stored before timestamps existed parses with a zero time and is
+	// simply not counted.
+	old := Data{}
+	if err := json.Unmarshal([]byte(`{"turns":[{"role":"user","content":"hi"}]}`), &old); err != nil {
+		t.Fatal(err)
+	}
+	if !old.Turns[0].At.IsZero() {
+		t.Error("an old turn must stay without a date")
+	}
+}
+
+// TestEventsTrailCounters is the other half of T1: mistakes, facts and
+// mnemonics leave dated events, because their counters cannot answer "this
+// week".
+func TestEventsTrailCounters(t *testing.T) {
+	d := Data{Profile: Profile{Level: "B1"}}
+	d.RecordMistake("past simple")
+	d.SetFact("city", "Madrid")
+	d.SetFact("mnemonic-past-simple", "Un tren que ya pasó.")
+	// Repeating a value is not news and must not add an event.
+	d.SetFact("city", "Madrid")
+
+	if len(d.Events) != 3 {
+		t.Fatalf("events = %d: %+v", len(d.Events), d.Events)
+	}
+	want := []struct{ kind, key string }{
+		{"mistake", "past simple"},
+		{"fact", "city"},
+		{"mnemonic", "mnemonic-past-simple"},
+	}
+	for i, w := range want {
+		if d.Events[i].Kind != w.kind || d.Events[i].Key != w.key {
+			t.Errorf("event %d = %+v, want %s/%s", i, d.Events[i], w.kind, w.key)
+		}
+		if d.Events[i].At.IsZero() {
+			t.Errorf("event %d has no date", i)
+		}
+	}
+}
+
+// TestEventsAreBounded keeps the file small no matter how long the learner
+// practises.
+func TestEventsAreBounded(t *testing.T) {
+	d := Data{Profile: Profile{Level: "B1"}}
+	for i := 0; i < maxEvents+5; i++ {
+		d.AddEvent("mistake", "past simple")
+	}
+	if len(d.Events) != maxEvents {
+		t.Fatalf("events = %d, want %d", len(d.Events), maxEvents)
+	}
+}
+
+func TestViewCopiesEvents(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Update(func(d *Data) { d.RecordMistake("articles") }); err != nil {
+		t.Fatal(err)
+	}
+	v := s.View()
+	v.Events[0].Key = "mutated"
+	if s.View().Events[0].Key != "articles" {
+		t.Error("View leaks the events slice")
 	}
 }

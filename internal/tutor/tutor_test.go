@@ -721,3 +721,32 @@ func TestGermanCorrectionsNameTheLanguage(t *testing.T) {
 		t.Errorf("review prompt = %s", sys)
 	}
 }
+
+// TestProgressSummarySendsTheNumbers is T4: the note is built from the stats,
+// never invented.
+func TestProgressSummarySendsTheNumbers(t *testing.T) {
+	f := &fakeOllama{reply: []string{"  Buena semana, Fito.  "}}
+	tut, _ := setup(t, f, 8192)
+	p := conv.Progress{Period: "week", ActiveDays: 4, Turns: 20, Streak: 3,
+		TopErrors: []conv.MistakeCount{{Key: "past simple", Count: 5}},
+		Facts:     1, Mnemonics: 2}
+
+	note, err := tut.ProgressSummary(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if note != "Buena semana, Fito." {
+		t.Errorf("note = %q", note)
+	}
+	msgs := f.requests()[0]["messages"].([]any)
+	sys := msgs[0].(map[string]any)["content"].(string)
+	if !strings.Contains(sys, "progress note") || !strings.Contains(sys, "Spanish") {
+		t.Errorf("system prompt = %q", sys)
+	}
+	user := msgs[1].(map[string]any)["content"].(string)
+	for _, want := range []string{"Turns: 20", "Streak: 3 days", "past simple x5", "Mnemonics earned: 2"} {
+		if !strings.Contains(user, want) {
+			t.Errorf("numbers missing %q:\n%s", want, user)
+		}
+	}
+}

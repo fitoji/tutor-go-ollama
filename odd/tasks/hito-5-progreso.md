@@ -16,11 +16,11 @@ Branch: `main`. Delivery: work-unit commits. Runner: `go test -race ./...`. Esta
 
 | ID | Specs | Ruta | Estado |
 |---|---|---|---|
-| T1 | S1, S2 | inline: `at` en turnos + registro de eventos acotado (riesgo: forma del estado) | pendiente |
-| T2 | S3, S5, S6 | inline: cálculo de stats por período con `now` inyectable | pendiente |
-| T3 | S3 | inline: comando `/progress` y su formato | pendiente |
-| T4 | S4 | inline: resumen con el LLM, timeout y falla silenciosa | pendiente |
-| T5 | — | docs: README + `/help` | pendiente |
+| T1 | S1, S2 | inline: `at` en turnos + registro de eventos acotado (riesgo: forma del estado) | **hecho** |
+| T2 | S3, S5, S6 | inline: cálculo de stats por período con `now` inyectable | **hecho** |
+| T3 | S3 | inline: comando `/progress` y su formato | **hecho** |
+| T4 | S4 | inline: resumen con el LLM, timeout y falla silenciosa | **hecho** |
+| T5 | — | docs: README + `/help` | **hecho** |
 
 ## Log
 
@@ -29,3 +29,7 @@ Branch: `main`. Delivery: work-unit commits. Runner: `go test -race ./...`. Esta
 **L2** — Decisiones: el progreso necesita eventos fechados, no solo contadores. Se elige un log acotado (1000) en vez de fechas por contador, porque también sirve para "datos aprendidos esta semana" y para el hito 6 (palabras repasadas). El resumen del LLM es opcional y nunca puede romper el comando.
 
 **L3** — Lo que **no** entra: gráficos, historial de sesiones y comparación entre idiomas. El progreso es por perfil (recordá que cada idioma es un tutor nuevo desde el hito 4).
+
+**L4** — T1 hecho: `Turn.At` (los turnos viejos quedan sin fecha y fuera de las cuentas) y `Data.Events` con tope de 1000, alimentado por `RecordMistake` y `SetFact` (los mnemónicos se distinguen por el prefijo). Todo aditivo: los archivos viejos se leen igual. `View()` copia los eventos.
+
+**L5** — Hito 5 completo. `conv.ComputeProgress(d, period, now)` cuenta turnos, días activos, racha, top 3 de errores y datos/mnemónicos del período, con `now` inyectable y el día calculado en su zona horaria. `/progress [week|month|all]` imprime los números y, si `--progress-summary` está en true, agrega una nota de dos frases del modelo con timeout de 8 s que falla en silencio. La racha sobrevive a un día sin practicar (cuenta desde ayer).

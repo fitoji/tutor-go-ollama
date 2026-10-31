@@ -19,7 +19,7 @@ Escribes en inglés (o en español; el tutor siempre responde en inglés). Mient
 
 Al arrancar te pregunta quién sos (`usuario:`); con Enter mantiene el último. Cada nombre guarda su propio nivel y sus propios errores, así que dos personas pueden compartir la máquina sin pisarse el perfil (ver [Un perfil por persona](#un-perfil-por-persona)).
 
-Comandos: `/reset`, `/level B2`, `/topic cine`, `/forget city`, `/voice femenina`, `/persona slang`, `/vad 0`, `/status`, `/quit`. Con el micrófono configurado, **Enter vacío** graba.
+Comandos: `/reset`, `/level B2`, `/topic cine`, `/forget city`, `/voice femenina`, `/persona slang`, `/vad 0`, `/progress`, `/status`, `/quit`. Con el micrófono configurado, **Enter vacío** graba.
 
 ## Proveedores
 
@@ -395,6 +395,24 @@ Límites que conviene saber:
 
 El parser tolera las formas en que los modelos rompen el contrato: una lista desnuda en vez del objeto, `[]` cuando no hay nada que corregir, y comillas dobles sin escapar dentro de un valor —esta última era la que producía `could not read corrections`—. Todo cubierto con tests.
 
+## Progreso
+
+`/progress` muestra **qué hiciste**, no qué sabés:
+
+```
+tú> /progress
+progreso · semana (6 días activos, racha 4)
+  turnos: 84
+  errores: past simple ×7 · articles ×4 · word order ×2
+  datos aprendidos: 3 · mnemónicos: 2
+  "Semana sólida: el pasado simple te está dejando de costar y sumaste vocabulario de cocina."
+```
+
+- `/progress month` y `/progress all` cambian el período; sin argumento va la semana.
+- **Racha**: días seguidos con al menos un turno. Sigue viva si practicaste ayer — abrir la app a la mañana no te la rompe.
+- **El resumen entre comillas** es una llamada al modelo con 8 s de tope: si no está, tarda o falla, se imprimen solo los números. Se apaga con `--progress-summary=false`.
+- Para que exista, cada turno guarda **cuándo** pasó y los errores, datos y mnemónicos dejan un rastro de eventos (máximo 1000). Los perfiles viejos se leen igual: sus turnos sin fecha quedan fuera de las cuentas.
+
 ## Límites del plan gratuito
 
 Cada turno son dos peticiones (respuesta y corrección) y de vez en cuando una tercera (resumen). Si Groq responde 429, la app espera una vez si el `Retry-After` es corto (≤15 s) y, si no, te dice cuánto esperar. Los límites cambian: confírmalos en la consola de Groq.
@@ -423,9 +441,9 @@ odd/tasks/           planes de los hitos grandes, con su bitácora
 
 Lo que quedó afuera del hito 3, en orden de utilidad: elegir el dispositivo de audio desde la app (`--stt-device` ya existe, pero hay que saber el índice), cortar la grabación por silencio (VAD) en vez de esperar el segundo Enter, y una vista de progreso como la de lingua-loop (`/progress` con estadísticas de la semana).
 
-**Hito 4, en curso**: alemán ya funciona (perfil por idioma, prompts, MCER, voz `phonon:de`, modo lección en A1). Faltan dos mejoras de voz que arrastra el hito: VAD por energía en Go (corta al callarte, sin segundo Enter) y `say` como backend de TTS (sin Ollama; es lo que destraba el italiano). Plan en [`odd/tasks/hito-4-aleman.md`](odd/tasks/hito-4-aleman.md) y temario en [`odd/tasks/hito-4-temario-aleman.md`](odd/tasks/hito-4-temario-aleman.md).
+**Hito 4, cerrado salvo una pieza**: alemán funciona entero (perfil por idioma, prompts, MCER, voz `phonon:de`, modo lección en A1, y VAD con `/vad` para apagarlo). Queda **diferido** `say` como backend de TTS: no hace falta para inglés ni alemán, y es lo que destraba el italiano (Phonon no tiene esa voz) o hablar sin Ollama. Plan en [`odd/tasks/hito-4-aleman.md`](odd/tasks/hito-4-aleman.md) y temario en [`odd/tasks/hito-4-temario-aleman.md`](odd/tasks/hito-4-temario-aleman.md).
 
-**Hito 5, planificado**: `/progress` con días activos, racha, turnos y los errores del período, más un resumen corto del modelo que falla en silencio. Necesita fechas en los turnos y un registro de eventos acotado. Plan en [`odd/tasks/hito-5-progreso.md`](odd/tasks/hito-5-progreso.md).
+**Hito 5, hecho**: `/progress` con días activos, racha, turnos y los errores del período, más un resumen corto del modelo que falla en silencio. Plan en [`odd/tasks/hito-5-progreso.md`](odd/tasks/hito-5-progreso.md).
 
 **Hito 6, planificado**: vocabulario con repaso espaciado — lista propia por alumno, categoría y rating, `/review`, y el tutor usando las palabras que te tocan (con el mnemónico que ya existe). Plan en [`odd/tasks/hito-6-vocabulario.md`](odd/tasks/hito-6-vocabulario.md).
 

@@ -408,6 +408,27 @@ func voiceInput(cfg config.Config) voiceSetup {
 	}
 }
 
+// printProgress renders one period. Numbers always print; the note is optional.
+func printProgress(p conv.Progress) {
+	label := map[string]string{"week": "semana", "month": "mes", "all": "todo"}[p.Period]
+	days := fmt.Sprintf("%d días activos", p.ActiveDays)
+	if p.ActiveDays == 1 {
+		days = "1 día activo"
+	}
+	fmt.Printf("progreso · %s (%s, racha %d)\n", label, days, p.Streak)
+	fmt.Printf("  turnos: %d\n", p.Turns)
+	if len(p.TopErrors) > 0 {
+		parts := make([]string, len(p.TopErrors))
+		for i, e := range p.TopErrors {
+			parts[i] = fmt.Sprintf("%s ×%d", e.Key, e.Count)
+		}
+		fmt.Printf("  errores: %s\n", strings.Join(parts, " · "))
+	} else {
+		fmt.Println("  errores: ninguno todavía")
+	}
+	fmt.Printf("  datos aprendidos: %d · mnemónicos: %d\n", p.Facts, p.Mnemonics)
+}
+
 // personaLabel names a persona by its first line, or the built-in default.
 func personaLabel(persona string) string {
 	if strings.TrimSpace(persona) == "" {
@@ -595,6 +616,7 @@ func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Con
 /voice femenina  cambiar la voz (femenina, masculina o un nombre de ollama show phonon)
 /persona slang   cambiar la voz del tutor (sin argumento: lista las disponibles)
 /vad 0           cortar la grabación por silencio: ms, 0 para apagarlo (sin argumento: muestra)
+/progress        qué hiciste (week, month o all), con racha y errores del período
 /status       modelo, memoria usada y estado de la conversación
 /quit         salir
 
@@ -632,6 +654,24 @@ Enter vacío   hablar en vez de escribir (graba hasta el próximo Enter)`)
 			fmt.Printf("olvidado: %s\n", conv.NormalizeFactKey(arg))
 		} else {
 			fmt.Printf("no tenía nada guardado con la clave %q\n", arg)
+		}
+	case "/progress":
+		period := strings.ToLower(strings.TrimSpace(arg))
+		if period == "" {
+			period = "week"
+		}
+		p, err := conv.ComputeProgress(store.View(), period, time.Now())
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		printProgress(p)
+		if cfg.ProgressSummary {
+			sctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+			defer cancel()
+			if note, err := tut.ProgressSummary(sctx, p); err == nil && note != "" {
+				fmt.Printf("  \"%s\"\n", note)
+			}
 		}
 	case "/vad":
 		ffr, ok := rec.(*voice.FFmpegRecorder)
