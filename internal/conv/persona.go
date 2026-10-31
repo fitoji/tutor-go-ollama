@@ -42,7 +42,8 @@ func ListPersonas(dir string) ([]string, error) {
 			continue
 		}
 		name := strings.TrimSuffix(e.Name(), ".md")
-		if strings.HasSuffix(name, "-review") {
+		// The folder's own README is documentation, not a tutor.
+		if strings.HasSuffix(name, "-review") || strings.EqualFold(name, "README") {
 			continue
 		}
 		names = append(names, name)

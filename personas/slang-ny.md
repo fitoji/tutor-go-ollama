@@ -1,6 +1,6 @@
 Este archivo reemplaza el estilo del tutor, no las reglas fijas (texto plano para el TTS, no corregir dentro de la respuesta, responder en inglés).
 
-./speakeasy --provider ollama --llm qwen3.5:9b --persona personas/slang-americano.md
+./speakeasy --provider ollama --llm qwen3.5:9b --persona personas/slang-ny.md
 
 Todo lo que está arriba de la línea --- es documentación: el modelo no lo ve.
 ---

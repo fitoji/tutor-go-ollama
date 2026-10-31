@@ -59,7 +59,7 @@ func TestSystemFallsBackToTheBuiltInStyle(t *testing.T) {
 // belongs to its main persona, it is not its own choice.
 func TestListPersonasSkipsTheReviewCompanions(t *testing.T) {
 	dir := t.TempDir()
-	for _, name := range []string{"slang.md", "slang-review.md", "cowboy.md", "notes.txt"} {
+	for _, name := range []string{"slang.md", "slang-review.md", "cowboy.md", "README.md", "notes.txt"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}

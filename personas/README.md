@@ -6,6 +6,8 @@ Cada `nombre.md` es la **voz** del tutor; `nombre-review.md` es el **tono de las
 |---|---|
 | `slang-americano.md` | tutor que habla slang americano todo el tiempo |
 | `slang-americano-review.md` | correcciones con chicana, sin dejar de nombrar el error |
+| `slang-ny.md` | variante neoyorquina: Brooklyn, grupo de chat, hip-hop |
+| `deutsch.md` | tutor de alemán con voz de Berlín |
 
 ## Cómo se usan
 

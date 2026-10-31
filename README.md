@@ -387,10 +387,11 @@ Lo que **no** podés cambiar: las reglas fijas. Si las pisaras, se rompería el 
 
 ### 🤙 Ejemplo: tutor full slang americano
 
-Hay uno listo en `personas/slang-americano.md`:
+Hay dos listos: `personas/slang-americano.md` (California, más suave) y `personas/slang-ny.md` (Brooklyn: "deadass", "mad tired", "hit the bodega", y la regla de no abreviar porque el TTS deletrea "fr" letra por letra).
 
 ```sh
 ./speakeasy --provider ollama --llm qwen3.5:9b --persona personas/slang-americano.md
+./speakeasy --provider ollama --llm qwen3.5:9b --persona personas/slang-ny.md
 ```
 
 Con el mismo mensaje que siempre:
