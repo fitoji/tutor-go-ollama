@@ -1,6 +1,7 @@
 package voice
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"net/http"
@@ -57,7 +58,7 @@ func TestSilent(t *testing.T) {
 // TestFFmpegArgs pins the command: avfoundation, the configured device, the
 // duration cap and raw 16 kHz mono PCM on stdout.
 func TestFFmpegArgs(t *testing.T) {
-	r := FFmpegRecorder{Device: ":1"}
+	r := &FFmpegRecorder{Device: ":1"}
 	args := strings.Join(r.Args(30*time.Second), " ")
 	for _, want := range []string{"-f avfoundation", "-i :1", "-t 30", "-ar 16000", "-ac 1", "-f s16le", "-"} {
 		if !strings.Contains(args, want) {
@@ -65,16 +66,17 @@ func TestFFmpegArgs(t *testing.T) {
 		}
 	}
 	// A zero duration must not ask ffmpeg for an infinite capture.
-	if got := strings.Join(FFmpegRecorder{}.Args(0), " "); !strings.Contains(got, "-t 1") {
+	zero := &FFmpegRecorder{}
+	if got := strings.Join(zero.Args(0), " "); !strings.Contains(got, "-t 1") {
 		t.Errorf("zero duration = %s", got)
 	}
-	if got := strings.Join(FFmpegRecorder{}.Args(time.Second), " "); !strings.Contains(got, "-i :0") {
+	if got := strings.Join(zero.Args(time.Second), " "); !strings.Contains(got, "-i :0") {
 		t.Errorf("default device = %s", got)
 	}
 }
 
 func TestRecordWithoutFFmpeg(t *testing.T) {
-	r := FFmpegRecorder{Path: "/nope/ffmpeg"}
+	r := &FFmpegRecorder{Path: "/nope/ffmpeg"}
 	_, err := r.Record(context.Background(), time.Second)
 	if err == nil || !strings.Contains(err.Error(), "brew install ffmpeg") {
 		t.Errorf("a missing ffmpeg must say how to install it: %v", err)
@@ -158,5 +160,50 @@ func TestGroqTranscribeDefaultsAndErrors(t *testing.T) {
 			t.Errorf("%d: %v, want %q", code, err, want)
 		}
 		srv.Close()
+	}
+}
+
+// TestLoudOnShortBlocks is what the VAD uses: a 100 ms block is too short for
+// Silent's "not speech yet" rule, but its level still tells noise from voice.
+func TestLoudOnShortBlocks(t *testing.T) {
+	if loud(pcmOf(SampleRate/10, 6000)) != true {
+		t.Error("speech level in a short block must read as loud")
+	}
+	if loud(pcmOf(SampleRate/10, 10)) != false {
+		t.Error("room noise in a short block must read as quiet")
+	}
+}
+
+// TestCopyUntilSilenceStopsAfterSpeech pins the VAD: it must ignore the leading
+// silence, stop after the hold once speech was heard, and keep the audio.
+func TestCopyUntilSilenceStopsAfterSpeech(t *testing.T) {
+	lead := pcmOf(SampleRate/2, 5)     // 500 ms of room noise
+	voice := pcmOf(SampleRate/2, 6000) // 500 ms of speech
+	tail := pcmOf(SampleRate*3, 5)     // 3 s of silence
+	src := bytes.NewReader(append(append(lead, voice...), tail...))
+
+	var out bytes.Buffer
+	start := time.Now()
+	copyUntilSilence(src, &out, 300*time.Millisecond)
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("the VAD should stop reading, took %v", d)
+	}
+	if out.Len() >= len(lead)+len(voice)+len(tail) {
+		t.Errorf("the VAD read everything (%d bytes)", out.Len())
+	}
+	// It kept the speech and did not cut before it started.
+	if out.Len() < len(lead)+len(voice) {
+		t.Errorf("the VAD cut before the speech ended: %d bytes", out.Len())
+	}
+}
+
+// TestCopyUntilSilenceWithoutVADReadsEverything keeps --vad 0 meaning "only the
+// Enter stops it".
+func TestCopyUntilSilenceWithoutVADReadsEverything(t *testing.T) {
+	pcm := pcmOf(SampleRate/2, 6000)
+	var out bytes.Buffer
+	copyUntilSilence(bytes.NewReader(pcm), &out, 0)
+	if out.Len() != len(pcm) {
+		t.Errorf("read %d of %d bytes", out.Len(), len(pcm))
 	}
 }

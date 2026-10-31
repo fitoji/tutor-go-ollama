@@ -19,7 +19,7 @@ Escribes en inglés (o en español; el tutor siempre responde en inglés). Mient
 
 Al arrancar te pregunta quién sos (`usuario:`); con Enter mantiene el último. Cada nombre guarda su propio nivel y sus propios errores, así que dos personas pueden compartir la máquina sin pisarse el perfil (ver [Un perfil por persona](#un-perfil-por-persona)).
 
-Comandos: `/reset`, `/level B2`, `/topic cine`, `/forget city`, `/voice femenina`, `/persona slang`, `/status`, `/quit`. Con el micrófono configurado, **Enter vacío** graba.
+Comandos: `/reset`, `/level B2`, `/topic cine`, `/forget city`, `/voice femenina`, `/persona slang`, `/vad 0`, `/status`, `/quit`. Con el micrófono configurado, **Enter vacío** graba.
 
 ## Proveedores
 
@@ -176,11 +176,13 @@ Necesita tres cosas: `ffmpeg` (`brew install ffmpeg`), la clave `GROQ_API_KEY` (
 | `--whisper-model` | `~/.speakeasy/models/ggml-small.en.bin` | modelo ggml para `--stt whisper` |
 | `--whisper-bin` | `whisper-cli` | binario de whisper.cpp |
 | `--record-max` | `30` | tope de grabación, en segundos |
+| `--vad` | `800` | ms de silencio para cortar solo (0 = solo el Enter corta) |
 
 Detalles que importan:
 
 - **El audio sale de tu máquina**: se sube al endpoint configurado, igual que el chat. Si no querés eso, `--stt off` y seguís escribiendo.
-- **Sin VAD**: si no hablás, la app detecta el silencio y dice `no entendí nada` en vez de mandarle ruido al tutor.
+- **Corta solo al callarte**: tras `--vad` ms de silencio (800 por defecto) y **después** de haberte escuchado, así no corta antes de que empieces. Es VAD por energía en Go (RMS), sin modelos ni Python; el segundo Enter sigue funcionando. Si no hablás, dice `no entendí nada` en vez de mandarle ruido al tutor.
+- **Si pensás mucho, apagalo**: `/vad 0` en plena sesión (o `--vad 0` al arrancar) y solo corta el Enter. `/vad 2000` da dos segundos de margen; `/vad` sin argumento muestra el valor actual.
 - **Groq factura mínimo 10 s por request**, así que una frase de 3 s cuesta lo mismo que una de 10 (~$0.0001 con `turbo`).
 - La grabación la hace `ffmpeg` con `avfoundation`; si el índice del micrófono no es el 0, `ffmpeg -f avfoundation -list_devices true -i ""` los lista.
 - **Con `--target de` el idioma del micrófono pasa a `de`** (si no pasás `--stt-lang`). Y si usás `--stt whisper` con el modelo `.en`, la app se niega a grabar: ese modelo no falla en alemán, **inventa** palabras. Hay que bajar `ggml-small.bin` (multilingüe) y pasarlo por `--whisper-model`.

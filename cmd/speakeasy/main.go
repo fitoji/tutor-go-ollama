@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -237,7 +238,7 @@ func run() error {
 			finish()
 			return nil
 		case strings.HasPrefix(line, "/"):
-			command(ctx, line, cl, cfg, store, tut, spk)
+			command(ctx, line, cl, cfg, store, tut, spk, rec)
 		default:
 			runTurn(line)
 		}
@@ -372,7 +373,7 @@ func voiceInput(cfg config.Config) voiceSetup {
 			Reason: "falta ffmpeg",
 		}
 	}
-	rec := voice.FFmpegRecorder{Path: "ffmpeg", Device: cfg.STTDevice}
+	rec := &voice.FFmpegRecorder{Path: "ffmpeg", Device: cfg.STTDevice, VAD: cfg.VAD}
 	switch cfg.STT {
 	case "whisper":
 		if _, err := exec.LookPath(cfg.WhisperBin); err != nil {
@@ -582,7 +583,7 @@ func ours(name string, need []string) bool {
 
 func gib(b int64) float64 { return float64(b) / (1 << 30) }
 
-func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Config, store *conv.Store, tut *tutor.Tutor, spk *speech.Speaker) {
+func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Config, store *conv.Store, tut *tutor.Tutor, spk *speech.Speaker, rec voice.Recorder) {
 	fields := strings.Fields(line)
 	arg := strings.TrimSpace(strings.TrimPrefix(line, fields[0]))
 	switch fields[0] {
@@ -593,6 +594,7 @@ func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Con
 /forget clave olvidar un dato que el tutor guardó (ej: /forget city)
 /voice femenina  cambiar la voz (femenina, masculina o un nombre de ollama show phonon)
 /persona slang   cambiar la voz del tutor (sin argumento: lista las disponibles)
+/vad 0           cortar la grabación por silencio: ms, 0 para apagarlo (sin argumento: muestra)
 /status       modelo, memoria usada y estado de la conversación
 /quit         salir
 
@@ -630,6 +632,32 @@ Enter vacío   hablar en vez de escribir (graba hasta el próximo Enter)`)
 			fmt.Printf("olvidado: %s\n", conv.NormalizeFactKey(arg))
 		} else {
 			fmt.Printf("no tenía nada guardado con la clave %q\n", arg)
+		}
+	case "/vad":
+		ffr, ok := rec.(*voice.FFmpegRecorder)
+		if !ok {
+			fmt.Println("el corte por silencio solo aplica a la grabación con ffmpeg")
+			return
+		}
+		if arg == "" {
+			cur := ffr.CurrentVAD()
+			if cur <= 0 {
+				fmt.Println("vad: off (solo el Enter corta)")
+			} else {
+				fmt.Printf("vad: %d ms · usa /vad 0 para apagarlo\n", cur.Milliseconds())
+			}
+			return
+		}
+		ms, err := strconv.Atoi(strings.TrimSpace(arg))
+		if err != nil || ms < 0 {
+			fmt.Println("uso: /vad 800 (ms de silencio, 0 para apagarlo)")
+			return
+		}
+		ffr.SetVAD(time.Duration(ms) * time.Millisecond)
+		if ms == 0 {
+			fmt.Println("vad: off (solo el Enter corta)")
+		} else {
+			fmt.Printf("vad: %d ms\n", ms)
 		}
 	case "/persona":
 		dir := filepath.Join(filepath.Dir(cfg.Persona), "personas")

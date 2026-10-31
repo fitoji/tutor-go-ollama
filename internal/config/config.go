@@ -54,6 +54,8 @@ type Config struct {
 	WhisperModel string
 	RecordMaxSec int
 	RecordMax    time.Duration
+	VADMs        int
+	VAD          time.Duration
 }
 
 // Remote reports whether the chat model runs on a remote API.
@@ -144,6 +146,7 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.WhisperBin, "whisper-bin", envOr("SPEAKEASY_WHISPER_BIN", "whisper-cli"), "whisper.cpp binary (for --stt whisper)")
 	fs.StringVar(&c.WhisperModel, "whisper-model", envOr("SPEAKEASY_WHISPER_MODEL", filepath.Join(home, ".speakeasy", "models", "ggml-small.en.bin")), "whisper.cpp ggml model (for --stt whisper)")
 	fs.IntVar(&c.RecordMaxSec, "record-max", envInt("SPEAKEASY_RECORD_MAX", 30), "longest recording, in seconds")
+	fs.IntVar(&c.VADMs, "vad", envInt("SPEAKEASY_VAD", 800), "stop recording after this many ms of silence once you speak (0 = only the Enter stops it)")
 	if err := fs.Parse(args); err != nil {
 		return c, err
 	}
@@ -193,6 +196,13 @@ func Parse(args []string) (Config, error) {
 		c.RecordMaxSec = 300
 	}
 	c.RecordMax = time.Duration(c.RecordMaxSec) * time.Second
+	if c.VADMs < 0 {
+		c.VADMs = 0
+	}
+	if c.VADMs > 10000 {
+		c.VADMs = 10000
+	}
+	c.VAD = time.Duration(c.VADMs) * time.Millisecond
 	// "femenina" / "masculina" pick a measured Phonon voice; any other value is
 	// an exact voice name.
 	c.Voice = speech.ResolveVoice(c.Voice)

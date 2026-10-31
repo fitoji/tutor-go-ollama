@@ -54,18 +54,31 @@ const minVoicedSamples = SampleRate / 5
 // silentRMS is about -48 dBFS: louder than room noise, quieter than speech.
 const silentRMS = 0.004
 
-// Silent reports whether the PCM carries no usable speech. Without VAD this is
-// the cheap guard that stops an accidental Enter from sending noise to the
-// tutor and paying for a transcription.
-func Silent(pcm []byte) bool {
+// rms is the root mean square of the PCM, in the 0..1 range.
+func rms(pcm []byte) float64 {
 	n := len(pcm) / 2
-	if n < minVoicedSamples {
-		return true
+	if n == 0 {
+		return 0
 	}
 	var sum float64
 	for i := 0; i < n; i++ {
 		v := float64(int16(binary.LittleEndian.Uint16(pcm[2*i:]))) / 32768
 		sum += v * v
 	}
-	return math.Sqrt(sum/float64(n)) < silentRMS
+	return math.Sqrt(sum / float64(n))
+}
+
+// loud reports whether a chunk carries something louder than room noise. The
+// VAD works on short blocks, where the "too short to be speech" rule of Silent
+// does not apply.
+func loud(pcm []byte) bool { return rms(pcm) >= silentRMS }
+
+// Silent reports whether the PCM carries no usable speech. Without VAD this is
+// the cheap guard that stops an accidental Enter from sending noise to the
+// tutor and paying for a transcription.
+func Silent(pcm []byte) bool {
+	if len(pcm)/2 < minVoicedSamples {
+		return true
+	}
+	return !loud(pcm)
 }

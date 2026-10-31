@@ -27,7 +27,7 @@ Branch: `main`. Delivery: work-unit commits. Runner: `go test -race ./...`. Esta
 | T3 | S5 | inline: perfiles MCER de alemán, desde el temario documentado | **hecho** |
 | T4 | S6, S7 | inline: default de voz y STT por idioma + validaciones | **hecho** |
 | T5 | S8 | docs: README, `/help`, una persona de ejemplo en alemán | **hecho** |
-| T6 | S9 | inline: VAD por bloques en `internal/voice` + `--vad` + tests con PCM sintético | pendiente |
+| T6 | S9 | inline: VAD por bloques en `internal/voice` + `--vad` + tests con PCM sintético | **hecho** |
 | T7 | S10 | inline: `SaySynth` en `internal/speech` + `--tts-backend`/`--say-voice` | pendiente |
 
 ## Log
@@ -59,3 +59,5 @@ Branch: `main`. Delivery: work-unit commits. Runner: `go test -race ./...`. Esta
 **L13** — T4 hecho: `--target de` deriva `--tts phonon:de` y `--stt-lang de` (los flags explícitos ganan), los modelos de una sola voz avisan en vez de mandar un alias inexistente, y `--stt whisper` con un `.en` se niega a grabar en otro idioma. Además el probe de `--selftest` ahora usa una frase alemana con error (`Gestern ich gehe…` → `Gestern ging ich…`). `phonon:de` descargado (122 MB) y selftest alemán en verde: voz, chat y correcciones.
 
 **L14** — T5 hecho, con un agregado pedido por el usuario: en **A1 alemán el tutor da una lección, no una charla**. El modo lo activa el nivel (no un flag ni una persona): una palabra o frase por turno, la dice, pide repetirla (`Sprich nach: …`) y avanza por saludos, «Ich heiße…», números, días y «Ich komme aus…». Sin gramática y sin slang, y solo en alemán (la voz es el checkpoint alemán). Verificado con qwen3.5:9b: dos turnos seguidos de lección. Persona de ejemplo en `personas/deutsch.md`.
+
+**L15** — T6 hecho: `--vad <ms>` (default 800, 0 apaga), VAD por energía sobre bloques de 100 ms, y no corta hasta haber escuchado voz. `loud()` se separó de `Silent()` porque el mínimo de 0.2 s hace que todo bloque corto parezca silencio. El recorder pasó de juntar stdout a leerlo por bloques y **cerrar el pipe** al terminar: un nieto que lo retiene colgaba la sesión (lo descubrió un test con un ffmpeg falso, que saqué).

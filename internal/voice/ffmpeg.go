@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,16 +20,48 @@ import (
 type FFmpegRecorder struct {
 	Path   string // "ffmpeg" by default
 	Device string // avfoundation audio device, ":0" by default
+	// VAD stops the capture after this much silence, once speech has been
+	// heard. Zero disables it and the caller decides when to stop. It can change
+	// mid-session with /vad.
+	VAD time.Duration
+
+	mu    sync.Mutex
+	vad   time.Duration
+	isSet bool
 }
 
-func (r FFmpegRecorder) path() string {
+// SetVAD changes the silence hold for the next recording. Zero means only the
+// Enter stops the capture.
+func (r *FFmpegRecorder) SetVAD(d time.Duration) {
+	if d < 0 {
+		d = 0
+	}
+	r.mu.Lock()
+	r.vad, r.isSet = d, true
+	r.mu.Unlock()
+}
+
+// CurrentVAD is the hold in use, with the initial value until it is changed.
+func (r *FFmpegRecorder) CurrentVAD() time.Duration {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.isSet {
+		return r.VAD
+	}
+	return r.vad
+}
+
+// vadBlock is how much audio is measured at a time: 100 ms at 16 kHz.
+const vadBlock = SampleRate / 10 * 2
+
+func (r *FFmpegRecorder) path() string {
 	if r.Path == "" {
 		return "ffmpeg"
 	}
 	return r.Path
 }
 
-func (r FFmpegRecorder) device() string {
+func (r *FFmpegRecorder) device() string {
 	if r.Device == "" {
 		return ":0"
 	}
@@ -35,7 +69,7 @@ func (r FFmpegRecorder) device() string {
 }
 
 // Args is the exact command line, exposed so a test can pin it.
-func (r FFmpegRecorder) Args(max time.Duration) []string {
+func (r *FFmpegRecorder) Args(max time.Duration) []string {
 	secs := int(max.Seconds())
 	if secs < 1 {
 		secs = 1
@@ -52,10 +86,14 @@ func (r FFmpegRecorder) Args(max time.Duration) []string {
 // Record captures until ctx is cancelled (the user pressed Enter again) or max
 // elapses, whichever comes first. Raw PCM has no trailer to finalize, so an
 // interrupted capture is still a valid buffer.
-func (r FFmpegRecorder) Record(ctx context.Context, max time.Duration) ([]byte, error) {
+func (r *FFmpegRecorder) Record(ctx context.Context, max time.Duration) ([]byte, error) {
 	cmd := exec.Command(r.path(), r.Args(max)...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
 	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
+	cmd.Stderr = &errb
 	if err := cmd.Start(); err != nil {
 		if errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist) ||
 			strings.Contains(err.Error(), "executable file not found") ||
@@ -65,20 +103,33 @@ func (r FFmpegRecorder) Record(ctx context.Context, max time.Duration) ([]byte, 
 		return nil, fmt.Errorf("no pude arrancar la grabación: %w", err)
 	}
 
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		copyUntilSilence(stdout, &out, r.CurrentVAD())
+	}()
 	done := make(chan struct{})
 	go func() { _ = cmd.Wait(); close(done) }()
 
 	select {
 	case <-ctx.Done():
-		// SIGINT makes ffmpeg flush what it already captured.
-		_ = cmd.Process.Signal(os.Interrupt)
-		select {
-		case <-done:
-		case <-time.After(3 * time.Second):
-			_ = cmd.Process.Kill()
-			<-done
-		}
+	case <-readDone: // the VAD ended the capture, or ffmpeg closed the pipe
 	case <-done:
+	}
+	// SIGINT makes ffmpeg flush what it already captured.
+	_ = cmd.Process.Signal(os.Interrupt)
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		_ = cmd.Process.Kill()
+		<-done
+	}
+	// A grandchild can keep the pipe open after the process is gone: closing it
+	// unblocks the reader instead of hanging the session.
+	_ = stdout.Close()
+	select {
+	case <-readDone:
+	case <-time.After(time.Second):
 	}
 
 	if out.Len() == 0 {
@@ -104,4 +155,34 @@ func micError(stderr string) error {
 		return errors.New("la grabación no devolvió audio")
 	}
 	return fmt.Errorf("la grabación falló: %s", line)
+}
+
+// copyUntilSilence reads the capture in small blocks and stops writing after
+// hold of silence, but only once something louder than room noise was heard:
+// without that guard it would cut before the learner starts talking.
+func copyUntilSilence(stdout io.Reader, out *bytes.Buffer, hold time.Duration) {
+	if hold <= 0 {
+		_, _ = io.Copy(out, stdout)
+		return
+	}
+	needSilentBytes := int(hold.Seconds() * SampleRate * 2)
+	buf := make([]byte, vadBlock)
+	spoken, silent := false, 0
+	for {
+		n, err := stdout.Read(buf)
+		if n > 0 {
+			out.Write(buf[:n])
+			if loud(buf[:n]) {
+				spoken, silent = true, 0
+			} else if spoken {
+				silent += n
+			}
+			if spoken && silent >= needSilentBytes {
+				return
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
 }
