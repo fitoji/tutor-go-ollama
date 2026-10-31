@@ -1,6 +1,6 @@
 # 🗣️ speakeasy
 
-Practica inglés hablando con un LLM, desde la terminal. Pensado para un Mac mini M4 de 16 GB: un solo binario en Go, sin dependencias externas. La voz es local (Phonon, vía Ollama); el chat puede ser una API económica (por defecto Groq, con plan gratuito) o un modelo local.
+Practica **inglés o alemán** hablando con un LLM, desde la terminal. Pensado para un Mac mini M4 de 16 GB: un solo binario en Go, sin dependencias de Go (sí `ffmpeg` para el micrófono). La voz es local (Phonon, vía Ollama); el chat puede ser una API económica (por defecto Groq, con plan gratuito) o un modelo local.
 
 ✅ **Estado:** hitos 1 a 5. Conversación por texto o **voz** (Enter vacío, con corte por silencio), respuesta hablada, un perfil **por alumno y por idioma** (inglés y alemán), correcciones que se endurecen con el nivel, mnemónicos cuando un error se repite, personas editables y `/progress`. Sin dependencias de Go: el binario, `ffmpeg` y opcionalmente `whisper-cli`.
 
@@ -28,7 +28,7 @@ Al arrancar limpia la pantalla, solo si es una terminal (`--no-clear` lo evita; 
 
 Es la vista rápida; `/status` es la completa (con los modelos que Ollama tiene cargados y el tamaño del último prompt).
 
-Escribes en inglés (o en español; el tutor siempre responde en inglés). Mientras suena la respuesta se calculan las correcciones de tu mensaje. Si escribes otra cosa mientras habla, se interrumpe. `Ctrl-C` corta el turno; en el prompt, sale.
+Escribes en inglés (o en español; el tutor siempre responde en el idioma que practicás, salvo que le pidas una traducción). Mientras suena la respuesta se calculan las correcciones de tu mensaje. Si escribes otra cosa mientras habla, se interrumpe. `Ctrl-C` corta el turno; en el prompt, sale.
 
 Al arrancar te pregunta quién sos (`usuario:`); con Enter mantiene el último. Cada nombre guarda su propio nivel y sus propios errores, así que dos personas pueden compartir la máquina sin pisarse el perfil (ver [Un perfil por persona](#un-perfil-por-persona)).
 
@@ -54,7 +54,7 @@ Ejemplos:
 
 Con un proveedor remoto **tus mensajes salen a un servidor externo** (la app lo recuerda al arrancar). Usa modelos sin razonamiento largo: los que «piensan» gastan el límite de tokens antes de contestar. Si el modelo emite bloques `<think>...</think>`, se descartan.
 
-Otras opciones (flag o variable): `--target` / `SPEAKEASY_TARGET` (idioma que practicás: `en` o `de`), `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice` (femenina, masculina o un nombre exacto), `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false` (oculta los `✎`; la pasada de revisión sigue guardando datos), `--no-clear` (no limpia la pantalla al arrancar), `--persona` (archivo que cambia la voz del tutor), `--review-persona` (archivo que cambia el tono de las correcciones), `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo). Los del micrófono (`--stt*`, `--whisper-*`, `--record-max`) están en [Entrada por voz](#entrada-por-voz).
+Otras opciones (flag o variable): `--target` / `SPEAKEASY_TARGET` (idioma que practicás: `en` o `de`), `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice` (femenina, masculina o un nombre exacto), `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false` (oculta los `✎`; la pasada de revisión sigue guardando datos), `--no-clear` (no limpia la pantalla al arrancar), `--persona` (archivo que cambia la voz del tutor), `--review-persona` (archivo que cambia el tono de las correcciones), `--progress-summary=false` (sin la nota del modelo en `/progress`), `--vad` (ms de silencio para cortar la grabación), `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo). Los del micrófono (`--stt*`, `--whisper-*`, `--record-max`) están en [Entrada por voz](#entrada-por-voz).
 
 ### 🩺 Antes de la primera sesión: `--selftest`
 
@@ -82,9 +82,9 @@ Lo que mató a LinguaLoop fue perder contexto y cargar varios modelos a la vez. 
 - **Con chat remoto, en tu Mac solo vive Phonon (~120 MB).** Con Ollama local, como mucho dos modelos: el LLM y Phonon. No hay selector de modelos en la app; se cambia con `--llm` y se reinicia. Al arrancar, `speakeasy` descarga de Ollama todo lo que no sea suyo (`/api/ps` + `keep_alive: 0`).
 - **El resumen y las correcciones usan el mismo modelo que la conversación.** Nunca se carga un segundo modelo para eso.
 - **Ollama: `num_ctx` fijo e idéntico en todas las peticiones.** Si cambia entre peticiones, Ollama recarga el modelo; y si no se indica, el valor por defecto es pequeño y trunca en silencio el principio del prompt (el system prompt incluido).
-- **La app es dueña de la memoria, no el modelo.** Cada petición se reconstruye: reglas del tutor + perfil (nivel, temas, errores recurrentes) + resumen rodante + últimos turnos que quepan en el presupuesto (`--num-ctx`). Cuando los turnos guardados pasan del 45 % del presupuesto, los más antiguos se resumen en segundo plano (≤120 palabras). La estimación de tokens es pesimista (3 caracteres por token). En remoto el presupuesto es de 4096 para que cada petición sea pequeña y quepa en los límites por minuto del plan gratuito.
+- **La app es dueña de la memoria, no el modelo.** Cada petición se reconstruye: reglas del tutor + perfil (nivel MCER, temas, errores recurrentes, hechos, mnemónicos) + persona + resumen rodante + últimos turnos que quepan en el presupuesto (`--num-ctx`). Cuando los turnos guardados pasan del 45 % del presupuesto, los más antiguos se resumen en segundo plano (≤120 palabras). La estimación de tokens es pesimista (3 caracteres por token). En remoto el presupuesto es de 4096 para que cada petición sea pequeña y quepa en los límites por minuto del plan gratuito.
 - **Audio con memoria acotada:** como mucho ~3 clips existen a la vez (sonando, en espera, sintetizándose). Si el reproductor se atasca, el flujo del LLM se frena en vez de acumular.
-- **Estado:** un JSON pequeño **por alumno** (ver abajo), con escritura atómica, máximo 200 turnos, 30 categorías de error, 5 temas y 40 entradas entre datos personales y mnemónicos.
+- **Estado:** un JSON pequeño **por alumno y por idioma** (ver abajo), con escritura atómica, máximo 200 turnos, 30 categorías de error, 5 temas, 40 entradas entre datos personales y mnemónicos, y un rastro de 1000 eventos fechados que alimenta `/progress`.
 - **Este proceso:** ~10 MB de RSS medido contra servidores simulados; `debug.SetMemoryLimit` configurable.
 
 ### 📊 Presupuesto estimado (no medido) en 16 GB con Ollama local
@@ -322,7 +322,7 @@ El cambio vale desde la frase siguiente (lo que ya está en la cola conserva su 
 
 ## 🎭 La voz del tutor: persona editable
 
-El comportamiento del tutor se parte en dos: **reglas fijas** (texto plano para que el TTS no lea asteriscos, no corregir dentro de la respuesta, responder en inglés, no pasar de 45 palabras) y **estilo**, que es editable.
+El comportamiento del tutor se parte en dos: **reglas fijas** (texto plano para que el TTS no lea asteriscos, no corregir dentro de la respuesta, responder en el idioma target, no pasar de 45 palabras) y **estilo**, que es editable.
 
 `--persona <archivo>` reemplaza el estilo. Por defecto mira `~/.speakeasy/tutor.md`; si no existe, usa el de fábrica. Todo lo que esté arriba de una línea `---` es documentación para vos: el modelo no lo ve.
 
@@ -440,13 +440,14 @@ Cada turno son dos peticiones (respuesta y corrección) y de vez en cuando una t
 ```
 cmd/speakeasy/       CLI: arranque, comandos, bucle, grabación de un turno
 internal/config/     flags, entorno y proveedores
-internal/learner/    quién practica y dónde vive su estado (un archivo por nombre)
+internal/learner/    quién practica y dónde vive su estado (un archivo por nombre e idioma)
 internal/llm/        interfaz neutral de chat (Request, Stats, Chatter)
 internal/openai/     cliente de chat/completions con SSE (Groq, xAI, ...)
 internal/ollama/     cliente de Ollama: chat, voz, ps/unload/load
 internal/conv/       memoria: perfil, nivel MCER, hechos, mnemónicos, persona, JSON
 internal/tutor/      un turno: prompt, streaming, resumen rodante, revisión, mnemónicos
-internal/voice/      micrófono: ffmpeg (avfoundation) -> PCM -> WAV -> transcripción
+internal/voice/      micrófono: ffmpeg (avfoundation) -> PCM -> WAV -> transcripción, VAD y nivel
+internal/ui/         color ANSI, spinners, medidor de grabación y limpieza de pantalla
 internal/selftest/   comprobaciones de `--selftest` contra los servicios reales
 internal/speech/     frases -> síntesis -> reproducción (afplay en macOS)
 personas/            tutores de ejemplo (slang americano + su tono de corrección)
@@ -457,7 +458,7 @@ odd/tasks/           planes de los hitos grandes, con su bitácora
 
 ## 🧭 Después
 
-Lo que quedó afuera del hito 3, en orden de utilidad: elegir el dispositivo de audio desde la app (`--stt-device` ya existe, pero hay que saber el índice), cortar la grabación por silencio (VAD) en vez de esperar el segundo Enter, y una vista de progreso como la de lingua-loop (`/progress` con estadísticas de la semana).
+Lo que falta, en orden de utilidad: elegir el dispositivo de audio desde la app (`--stt-device` existe, pero hay que saber el índice), el **hito 6** (vocabulario con repaso) y `say` como backend de TTS (diferido, ver abajo).
 
 **Hito 4, cerrado salvo una pieza**: alemán funciona entero (perfil por idioma, prompts, MCER, voz `phonon:de`, modo lección en A1, y VAD con `/vad` para apagarlo). Queda **diferido** `say` como backend de TTS: no hace falta para inglés ni alemán, y es lo que destraba el italiano (Phonon no tiene esa voz) o hablar sin Ollama. Plan en [`odd/tasks/hito-4-aleman.md`](odd/tasks/hito-4-aleman.md) y temario en [`odd/tasks/hito-4-temario-aleman.md`](odd/tasks/hito-4-temario-aleman.md).
 
@@ -467,7 +468,7 @@ Lo que quedó afuera del hito 3, en orden de utilidad: elegir el dispositivo de 
 
 ## ⚠️ Sin verificar
 
-Se desarrolló con servidores simulados (Ollama y compatible con OpenAI). **Verificado en macOS arm64 con Ollama 0.40.13 y phonon**: `--selftest` pasa las cinco comprobaciones contra los servicios reales y una sesión con voz funciona. Queda sin probar contra Groq y contra xAI/custom. Puntos a confirmar:
+Se desarrolló con servidores simulados (Ollama y compatible con OpenAI). **Verificado en macOS arm64 con Ollama 0.40.13**: `--selftest` pasa las cinco comprobaciones contra los servicios reales con `phonon`, y también con `--target de` contra `phonon:de` (el probe manda una frase alemana con un error de posición verbal y el modelo la corrige). Una sesión con voz funciona. Queda sin probar contra Groq y contra xAI/custom. Puntos a confirmar:
 
 - Que Groq acepta `max_tokens`, el modo JSON (`response_format: json_object`) con tu modelo y el streaming tal como lo implementa el cliente (el uso de tokens se lee de `usage` o `x_groq.usage`; si no llega, `/status` lo indica).
 - Que el modelo elegido cumple el formato JSON de las correcciones. Ya no rompe la sesión: el parser acepta lista desnuda, `[]` y comillas sin escapar, pero un modelo que no corrija nada útil igual te deja sin `✎`.
