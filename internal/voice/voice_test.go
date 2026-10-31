@@ -123,7 +123,7 @@ func TestGroqTranscribe(t *testing.T) {
 	defer srv.Close()
 
 	g := GroqTranscriber{Base: srv.URL, Key: "k1", Model: "whisper-large-v3-turbo"}
-	text, err := g.Transcribe(context.Background(), pcmOf(SampleRate, 5000), "en")
+	text, err := g.Transcribe(context.Background(), pcmOf(SampleRate, 5000), "en", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestGroqTranscribe(t *testing.T) {
 
 func TestGroqTranscribeDefaultsAndErrors(t *testing.T) {
 	// An empty audio buffer is not worth a request.
-	if text, err := (GroqTranscriber{}).Transcribe(context.Background(), nil, "en"); err != nil || text != "" {
+	if text, err := (GroqTranscriber{}).Transcribe(context.Background(), nil, "en", ""); err != nil || text != "" {
 		t.Errorf("empty audio: %q %v", text, err)
 	}
 
@@ -156,7 +156,7 @@ func TestGroqTranscribeDefaultsAndErrors(t *testing.T) {
 			w.Write([]byte(`{"error":"nope"}`))
 		}))
 		g := GroqTranscriber{Base: srv.URL, Key: "k"}
-		if _, err := g.Transcribe(context.Background(), pcmOf(SampleRate, 5000), "en"); err == nil || !strings.Contains(err.Error(), want) {
+		if _, err := g.Transcribe(context.Background(), pcmOf(SampleRate, 5000), "en", ""); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%d: %v, want %q", code, err, want)
 		}
 		srv.Close()
@@ -205,5 +205,29 @@ func TestCopyUntilSilenceWithoutVADReadsEverything(t *testing.T) {
 	copyUntilSilence(bytes.NewReader(pcm), &out, 0, nil)
 	if out.Len() != len(pcm) {
 		t.Errorf("read %d of %d bytes", out.Len(), len(pcm))
+	}
+}
+
+// TestTrimSilence keeps the speech and one block of margin, and drops the quiet
+// edges where Whisper invents text.
+func TestTrimSilence(t *testing.T) {
+	lead := pcmOf(SampleRate/2, 5)     // 500 ms de ruido
+	voice := pcmOf(SampleRate/2, 6000) // 500 ms de voz
+	tail := pcmOf(SampleRate, 5)       // 1 s de silencio
+	got := TrimSilence(append(append(lead, voice...), tail...))
+	if len(got) >= len(lead)+len(voice)+len(tail) {
+		t.Errorf("nothing trimmed: %d bytes", len(got))
+	}
+	if len(got) < len(voice) {
+		t.Errorf("trimmed into the speech: %d bytes", len(got))
+	}
+	// All silence is nothing to transcribe.
+	if TrimSilence(pcmOf(SampleRate, 5)) != nil {
+		t.Error("all-silence audio must trim to nil")
+	}
+	// Short audio is returned untouched: trimming it is not worth the risk.
+	short := pcmOf(SampleRate/10, 6000)
+	if len(TrimSilence(short)) != len(short) {
+		t.Error("short audio must pass through")
 	}
 }

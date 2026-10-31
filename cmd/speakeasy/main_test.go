@@ -809,7 +809,7 @@ type fakeTranscriber struct {
 	got  []byte
 }
 
-func (f *fakeTranscriber) Transcribe(ctx context.Context, pcm []byte, lang string) (string, error) {
+func (f *fakeTranscriber) Transcribe(ctx context.Context, pcm []byte, lang, prompt string) (string, error) {
 	f.lang, f.got = lang, pcm
 	return f.text, f.err
 }
@@ -831,7 +831,7 @@ func TestRecordTurnSendsTheTranscript(t *testing.T) {
 	var out strings.Builder
 	var got string
 
-	err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", 30*time.Second, &out, func(s string) { got = s }, ui.New(false))
+	err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", "", 30*time.Second, &out, func(s string) { got = s }, ui.New(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -854,7 +854,7 @@ func TestRecordTurnIgnoresSilence(t *testing.T) {
 	var out strings.Builder
 	called := false
 
-	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", time.Second, &out, func(string) { called = true }, ui.New(false)); err != nil {
+	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", "", time.Second, &out, func(string) { called = true }, ui.New(false)); err != nil {
 		t.Fatal(err)
 	}
 	if called {
@@ -871,13 +871,13 @@ func TestRecordTurnIgnoresSilence(t *testing.T) {
 func TestRecordTurnReportsErrors(t *testing.T) {
 	var out strings.Builder
 	rec := &fakeRecorder{err: errors.New("mic roto")}
-	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, &fakeTranscriber{}, "en", time.Second, &out, func(string) {}, ui.New(false)); err == nil || !strings.Contains(err.Error(), "mic roto") {
+	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, &fakeTranscriber{}, "en", "", time.Second, &out, func(string) {}, ui.New(false)); err == nil || !strings.Contains(err.Error(), "mic roto") {
 		t.Errorf("recorder error lost: %v", err)
 	}
 
 	rec = &fakeRecorder{pcm: loudPCM()}
 	tr := &fakeTranscriber{err: errors.New("sin clave")}
-	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", time.Second, &out, func(string) {}, ui.New(false)); err == nil || !strings.Contains(err.Error(), "sin clave") {
+	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", "", time.Second, &out, func(string) {}, ui.New(false)); err == nil || !strings.Contains(err.Error(), "sin clave") {
 		t.Errorf("transcriber error lost: %v", err)
 	}
 }
@@ -889,7 +889,7 @@ func TestRecordTurnCancelsTheRecorderOnEnter(t *testing.T) {
 	var out strings.Builder
 	done := make(chan error, 1)
 	go func() {
-		done <- recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, &fakeTranscriber{text: "hola"}, "en", time.Hour, &out, func(string) {}, ui.New(false))
+		done <- recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, &fakeTranscriber{text: "hola"}, "en", "", time.Hour, &out, func(string) {}, ui.New(false))
 	}()
 	select {
 	case err := <-done:
@@ -944,8 +944,15 @@ func TestMicLabelSaysWhy(t *testing.T) {
 	if got := micLabel(cfg, voiceSetup{}); got != "off" {
 		t.Errorf("without a reason: %q", got)
 	}
-	if got := micLabel(cfg, voiceSetup{Rec: &fakeRecorder{}}); got != "groq" {
+	cfg.STTModel = "whisper-large-v3-turbo"
+	if got := micLabel(cfg, voiceSetup{Rec: &fakeRecorder{}}); got != "groq (whisper-large-v3-turbo)" {
 		t.Errorf("enabled: %q", got)
+	}
+	// Local whisper shows which model is doing the work: the difference between
+	// 0.5 s and 1.4 s per sentence, and between English only and bilingual.
+	local := config.Config{STT: "whisper", WhisperModel: "/x/ggml-large-v3-turbo-q8_0.bin"}
+	if got := micLabel(local, voiceSetup{Rec: &fakeRecorder{}}); got != "whisper (large-v3-turbo-q8_0)" {
+		t.Errorf("local: %q", got)
 	}
 }
 
@@ -1244,5 +1251,26 @@ func TestWelcomeShowsWhereYouAre(t *testing.T) {
 	welcome(&de, ui.New(false), config.Config{User: "Ana", Target: "de", Provider: "ollama", LLM: "m", NumCtx: 8192}, newStore(t), nil, voiceSetup{})
 	if !strings.Contains(de.String(), "practicá alemán") {
 		t.Errorf("german welcome:\n%s", de.String())
+	}
+}
+
+// TestTranscriptionPrompt primes the recogniser with what it will hear: names
+// and topic words are where ASR fails first.
+func TestTranscriptionPrompt(t *testing.T) {
+	d := conv.Data{Profile: conv.Profile{Level: "B1"}}
+	if got := transcriptionPrompt(d, config.Config{Target: "en"}); got != "" {
+		t.Errorf("empty profile: %q", got)
+	}
+	d.SetFact("name", "Fito")
+	d.AddTopic("cooking")
+	d.AddTopic("cinema")
+	got := transcriptionPrompt(d, config.Config{Target: "en"})
+	for _, want := range []string{"English lesson", "Learner name: Fito", "cooking, cinema"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt %q should contain %q", got, want)
+		}
+	}
+	if de := transcriptionPrompt(d, config.Config{Target: "de"}); !strings.Contains(de, "German lesson") {
+		t.Errorf("german prompt: %q", de)
 	}
 }

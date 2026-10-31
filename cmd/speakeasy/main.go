@@ -257,7 +257,7 @@ func run() error {
 			if rec == nil || tr == nil {
 				continue
 			}
-			if err := recordTurn(ctx, sc, rec, tr, cfg.STTLang, cfg.RecordMax, os.Stdout, runTurn, sty); err != nil {
+			if err := recordTurn(ctx, sc, rec, tr, cfg.STTLang, transcriptionPrompt(store.View(), cfg), cfg.RecordMax, os.Stdout, runTurn, sty); err != nil {
 				fmt.Fprintln(os.Stderr, "error:", err)
 			}
 			continue
@@ -559,13 +559,47 @@ func micLabel(cfg config.Config, vs voiceSetup) string {
 		}
 		return "off"
 	}
+	if cfg.STT == "whisper" {
+		if m := shortModel(cfg.WhisperModel); m != "" {
+			return "whisper (" + m + ")"
+		}
+		return "whisper"
+	}
+	if cfg.STTModel != "" {
+		return cfg.STT + " (" + cfg.STTModel + ")"
+	}
 	return cfg.STT
+}
+
+// shortModel turns a model path into a name worth reading in the welcome:
+// ggml-large-v3-turbo-q8_0.bin becomes large-v3-turbo-q8_0.
+func shortModel(path string) string {
+	name := filepath.Base(path)
+	name = strings.TrimSuffix(name, ".bin")
+	return strings.TrimPrefix(name, "ggml-")
+}
+
+// transcriptionPrompt primes the recogniser with what the learner is talking
+// about. Names and topic words are where ASR fails first, and both backends
+// accept a short prompt for exactly this.
+func transcriptionPrompt(d conv.Data, cfg config.Config) string {
+	var parts []string
+	if name := d.Profile.Facts["name"]; name != "" {
+		parts = append(parts, "Learner name: "+name)
+	}
+	if len(d.Profile.Topics) > 0 {
+		parts = append(parts, "Topics: "+strings.Join(d.Profile.Topics, ", "))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return conv.LanguageName(cfg.Target) + " lesson. " + strings.Join(parts, ". ") + "."
 }
 
 // recordTurn records one utterance, transcribes it and hands the text to run.
 // It is split out of the loop so a test can drive it with fake recorder and
 // transcriber, without a microphone or a network.
-func recordTurn(ctx context.Context, sc *bufio.Scanner, rec voice.Recorder, tr voice.Transcriber, lang string, max time.Duration, out io.Writer, run func(string), sty ui.Style) error {
+func recordTurn(ctx context.Context, sc *bufio.Scanner, rec voice.Recorder, tr voice.Transcriber, lang, prompt string, max time.Duration, out io.Writer, run func(string), sty ui.Style) error {
 	fmt.Fprint(out, "🎙  grabando… (Enter para cortar)")
 	stopMeter := startMeter(out, rec, sty.Enabled())
 	rctx, cancel := context.WithCancel(ctx)
@@ -598,8 +632,13 @@ func recordTurn(ctx context.Context, sc *bufio.Scanner, rec voice.Recorder, tr v
 		fmt.Fprintln(out, sty.Dim("no entendí nada (silencio)"))
 		return nil
 	}
+	pcm := voice.TrimSilence(got.pcm)
+	if len(pcm) == 0 {
+		fmt.Fprintln(out, sty.Dim("no entendí nada (silencio)"))
+		return nil
+	}
 	spin := ui.Start(out, sty.Enabled(), "transcribiendo…")
-	text, err := tr.Transcribe(ctx, got.pcm, lang)
+	text, err := tr.Transcribe(ctx, pcm, lang, prompt)
 	spin.Stop()
 	if err != nil {
 		return err

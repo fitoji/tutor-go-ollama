@@ -51,6 +51,7 @@ func TestGroqMultipartGaps(t *testing.T) {
 		form = map[string]string{
 			"model": r.FormValue("model"), "response_format": r.FormValue("response_format"),
 			"temperature": r.FormValue("temperature"), "language": r.FormValue("language"),
+			"prompt": r.FormValue("prompt"),
 		}
 		if _, _, err := r.FormFile("file"); err != nil {
 			t.Errorf("file: %v", err)
@@ -60,21 +61,21 @@ func TestGroqMultipartGaps(t *testing.T) {
 	defer srv.Close()
 
 	g := GroqTranscriber{Base: srv.URL + "/", Key: "sk-1", Model: "whisper-large-v3-turbo"}
-	if text, err := g.Transcribe(context.Background(), gapPCM(16000, 5000), "en"); err != nil || text != "hi" {
+	if text, err := g.Transcribe(context.Background(), gapPCM(16000, 5000), "en", "English lesson. Learner name: Fito."); err != nil || text != "hi" {
 		t.Fatalf("text=%q err=%v", text, err)
 	}
-	for k, v := range map[string]string{"model": "whisper-large-v3-turbo", "response_format": "json", "temperature": "0", "language": "en"} {
+	for k, v := range map[string]string{"model": "whisper-large-v3-turbo", "response_format": "json", "temperature": "0", "language": "en", "prompt": "English lesson. Learner name: Fito."} {
 		if form[k] != v {
 			t.Errorf("%s=%q want %q", k, form[k], v)
 		}
 	}
 	before := atomic.LoadInt32(&hits)
-	if _, err := g.Transcribe(context.Background(), nil, "en"); err != nil || atomic.LoadInt32(&hits) != before {
+	if _, err := g.Transcribe(context.Background(), nil, "en", ""); err != nil || atomic.LoadInt32(&hits) != before {
 		t.Errorf("empty PCM made a request: err=%v", err)
 	}
 	denied := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(403) }))
 	defer denied.Close()
-	if _, err := (GroqTranscriber{Base: denied.URL, Key: "k"}).Transcribe(context.Background(), gapPCM(16000, 5000), "en"); err == nil || !strings.Contains(err.Error(), "clave") {
+	if _, err := (GroqTranscriber{Base: denied.URL, Key: "k"}).Transcribe(context.Background(), gapPCM(16000, 5000), "en", ""); err == nil || !strings.Contains(err.Error(), "clave") {
 		t.Errorf("403: %v", err)
 	}
 }

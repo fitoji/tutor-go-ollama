@@ -30,16 +30,20 @@ func (w WhisperCPP) bin() string {
 // Args is the exact command line, exposed so a test can pin it. -otxt writes
 // the text to <out>.txt, which is cleaner than parsing stdout: whisper prints
 // its own noise there even with -np.
-func (w WhisperCPP) Args(wav, out, lang string) []string {
+func (w WhisperCPP) Args(wav, out, lang, prompt string) []string {
 	if lang == "" {
 		lang = "auto"
 	}
-	return []string{"-m", w.Model, "-f", wav, "-l", lang, "-nt", "-np", "-otxt", "-of", out}
+	args := []string{"-m", w.Model, "-f", wav, "-l", lang, "-nt", "-np", "-otxt", "-of", out}
+	if prompt != "" {
+		args = append(args, "--prompt", prompt)
+	}
+	return args
 }
 
 // Transcribe writes the audio to a temporary WAV, runs the binary and reads the
 // text back. The scratch directory is removed either way.
-func (w WhisperCPP) Transcribe(ctx context.Context, pcm []byte, lang string) (string, error) {
+func (w WhisperCPP) Transcribe(ctx context.Context, pcm []byte, lang, prompt string) (string, error) {
 	if len(pcm) == 0 {
 		return "", nil
 	}
@@ -58,7 +62,7 @@ func (w WhisperCPP) Transcribe(ctx context.Context, pcm []byte, lang string) (st
 	}
 	out := filepath.Join(dir, "out")
 
-	cmd := exec.CommandContext(ctx, w.bin(), w.Args(wav, out, lang)...)
+	cmd := exec.CommandContext(ctx, w.bin(), w.Args(wav, out, lang, prompt)...)
 	var errb bytes.Buffer
 	cmd.Stderr = &errb
 	if err := cmd.Run(); err != nil {

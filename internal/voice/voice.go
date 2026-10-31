@@ -20,9 +20,10 @@ type Recorder interface {
 	Record(ctx context.Context, max time.Duration) ([]byte, error)
 }
 
-// Transcriber turns PCM into text.
+// Transcriber turns PCM into text. prompt primes the recogniser with names and
+// topic words, which is where speech recognition fails first on a learner.
 type Transcriber interface {
-	Transcribe(ctx context.Context, pcm []byte, lang string) (string, error)
+	Transcribe(ctx context.Context, pcm []byte, lang, prompt string) (string, error)
 }
 
 // WAV wraps raw 16 kHz mono PCM in a WAV container, which is what the
@@ -81,4 +82,34 @@ func Silent(pcm []byte) bool {
 		return true
 	}
 	return !loud(pcm)
+}
+
+// TrimSilence drops whole blocks of quiet at the edges, keeping one block of
+// margin on each side so the first and last phoneme survive. Whisper invents
+// text on long stretches of silence, so trimming is cheaper than trusting it.
+func TrimSilence(pcm []byte) []byte {
+	if len(pcm) <= vadBlock {
+		return pcm
+	}
+	first, last := -1, -1
+	for i := 0; i+vadBlock <= len(pcm); i += vadBlock {
+		if loud(pcm[i : i+vadBlock]) {
+			if first < 0 {
+				first = i
+			}
+			last = i + vadBlock
+		}
+	}
+	if first < 0 {
+		return nil
+	}
+	start := first - vadBlock
+	if start < 0 {
+		start = 0
+	}
+	end := last + vadBlock
+	if end > len(pcm) {
+		end = len(pcm)
+	}
+	return pcm[start:end]
 }

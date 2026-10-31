@@ -46,7 +46,7 @@ func (g GroqTranscriber) client() *http.Client {
 
 // Transcribe uploads the audio as a WAV and returns the text. lang is an
 // ISO-639-1 code ("en"); empty lets the model guess.
-func (g GroqTranscriber) Transcribe(ctx context.Context, pcm []byte, lang string) (string, error) {
+func (g GroqTranscriber) Transcribe(ctx context.Context, pcm []byte, lang, prompt string) (string, error) {
 	if len(pcm) == 0 {
 		return "", nil
 	}
@@ -57,6 +57,9 @@ func (g GroqTranscriber) Transcribe(ctx context.Context, pcm []byte, lang string
 	_ = w.WriteField("temperature", "0")
 	if lang != "" {
 		_ = w.WriteField("language", lang)
+	}
+	if prompt != "" {
+		_ = w.WriteField("prompt", prompt)
 	}
 	fw, err := w.CreateFormFile("file", "speech.wav")
 	if err != nil {
