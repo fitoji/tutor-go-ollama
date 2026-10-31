@@ -1,10 +1,10 @@
-# speakeasy
+# 🗣️ speakeasy
 
 Practica inglés hablando con un LLM, desde la terminal. Pensado para un Mac mini M4 de 16 GB: un solo binario en Go, sin dependencias externas. La voz es local (Phonon, vía Ollama); el chat puede ser una API económica (por defecto Groq, con plan gratuito) o un modelo local.
 
-Estado: hitos 1, 2 y 3. Conversación por texto o **voz** (Enter vacío), respuesta hablada, memoria acotada por alumno, correcciones que se endurecen con el nivel, mnemónicos cuando un error se repite, y un tutor cuya voz y cuyo tono de corrección se eligen con un archivo. Sin dependencias de Go: el binario, `ffmpeg` y opcionalmente `whisper-cli`.
+✅ **Estado:** hitos 1 a 5. Conversación por texto o **voz** (Enter vacío, con corte por silencio), respuesta hablada, un perfil **por alumno y por idioma** (inglés y alemán), correcciones que se endurecen con el nivel, mnemónicos cuando un error se repite, personas editables y `/progress`. Sin dependencias de Go: el binario, `ffmpeg` y opcionalmente `whisper-cli`.
 
-## Uso rápido (Groq, para testear)
+## 🚀 Uso rápido (Groq, para testear)
 
 ```sh
 export GROQ_API_KEY=...        # clave gratuita desde la consola de Groq
@@ -19,9 +19,9 @@ Escribes en inglés (o en español; el tutor siempre responde en inglés). Mient
 
 Al arrancar te pregunta quién sos (`usuario:`); con Enter mantiene el último. Cada nombre guarda su propio nivel y sus propios errores, así que dos personas pueden compartir la máquina sin pisarse el perfil (ver [Un perfil por persona](#un-perfil-por-persona)).
 
-Comandos: `/reset`, `/level B2`, `/topic cine`, `/forget city`, `/voice femenina`, `/persona slang`, `/vad 0`, `/progress`, `/status`, `/quit`. Con el micrófono configurado, **Enter vacío** graba.
+🕹️ **Comandos:** `/reset`, `/level B2`, `/topic cine`, `/forget city`, `/voice femenina`, `/persona slang`, `/vad 0`, `/progress`, `/status`, `/quit`. Con el micrófono configurado, **Enter vacío** graba.
 
-## Proveedores
+## 🔌 Proveedores
 
 | `--provider` | Chat | Clave | Modelo por defecto |
 |---|---|---|---|
@@ -43,7 +43,7 @@ Con un proveedor remoto **tus mensajes salen a un servidor externo** (la app lo 
 
 Otras opciones (flag o variable): `--target` / `SPEAKEASY_TARGET` (idioma que practicás: `en` o `de`), `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice` (femenina, masculina o un nombre exacto), `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false` (oculta los `✎`; la pasada de revisión sigue guardando datos), `--persona` (archivo que cambia la voz del tutor), `--review-persona` (archivo que cambia el tono de las correcciones), `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo). Los del micrófono (`--stt*`, `--whisper-*`, `--record-max`) están en [Entrada por voz](#entrada-por-voz).
 
-### Antes de la primera sesión: `--selftest`
+### 🩺 Antes de la primera sesión: `--selftest`
 
 ```sh
 ./speakeasy --selftest            # chat + correcciones + voz, según lo configurado
@@ -62,7 +62,7 @@ Hace las mismas peticiones que la app en un turno real —versión de Ollama, mo
 
 La comprobación de correcciones manda una frase con un error obvio (*"Yesterday I go to the cinema with my friend"*); si el modelo no devuelve ninguna corrección, cuenta como fallo: el formato JSON se está ignorando y la función no sirve en la práctica.
 
-## Cómo se cuida la memoria
+## 🧠 Cómo se cuida la memoria
 
 Lo que mató a LinguaLoop fue perder contexto y cargar varios modelos a la vez. Aquí:
 
@@ -74,7 +74,7 @@ Lo que mató a LinguaLoop fue perder contexto y cargar varios modelos a la vez. 
 - **Estado:** un JSON pequeño **por alumno** (ver abajo), con escritura atómica, máximo 200 turnos, 30 categorías de error, 5 temas y 40 entradas entre datos personales y mnemónicos.
 - **Este proceso:** ~10 MB de RSS medido contra servidores simulados; `debug.SetMemoryLimit` configurable.
 
-### Presupuesto estimado (no medido) en 16 GB con Ollama local
+### 📊 Presupuesto estimado (no medido) en 16 GB con Ollama local
 
 | Pieza | Aprox. |
 |---|---|
@@ -85,7 +85,7 @@ Lo que mató a LinguaLoop fue perder contexto y cargar varios modelos a la vez. 
 
 Con Groq te ahorras los ~6 GB del LLM. `/status` muestra lo que Ollama tiene cargado.
 
-### Ajustes recomendados en el servidor Ollama
+### ⚙️ Ajustes recomendados en el servidor Ollama
 
 ```sh
 OLLAMA_MAX_LOADED_MODELS=2 OLLAMA_NUM_PARALLEL=1 ollama serve
@@ -93,7 +93,9 @@ OLLAMA_MAX_LOADED_MODELS=2 OLLAMA_NUM_PARALLEL=1 ollama serve
 # OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0   (KV cache a la mitad)
 ```
 
-## Un perfil por persona
+<a id="un-perfil-por-persona"></a>
+
+## 👤 Un perfil por persona
 
 El nivel y los errores recurrentes son de quien practica, no de la máquina. Al arrancar la app pregunta el nombre (sin contraseña, sin cuentas) y con eso elige el archivo de estado:
 
@@ -122,7 +124,7 @@ chat: groq · llama-3.3-70b-versatile
 conversación: 12 turnos, resumen de 87 palabras, nivel B2
 ```
 
-## Lo que el tutor recuerda de vos
+## 💬 Lo que el tutor recuerda de vos
 
 Además de tu nivel y tus errores, el tutor guarda **datos personales** para que la charla tenga contexto. En la primera sesión pregunta, de a una por turno: tu nombre, de dónde sos, dónde vivís y qué te gusta hacer. Con eso arranca el tema y deja de preguntar.
 
@@ -138,7 +140,9 @@ lo que sabe de vos: city=Madrid · country=Argentina · hobby=cooking · name=Fi
 - Límites: 40 datos, clave de hasta 40 caracteres, valor de hasta 200. Los datos salen solo de lo que escribís: si el modelo devuelve un placeholder o algo que no está en tu mensaje, se descarta.
 - Los datos se extraen en la **pasada de revisión** (la misma que corrige), con salida JSON. `--corrections=false` oculta los `✎` pero la pasada sigue corriendo: es la que guarda los datos.
 
-## Entrada por voz
+<a id="entrada-por-voz"></a>
+
+## 🎙️ Entrada por voz
 
 Un **Enter vacío** en el prompt graba; el siguiente Enter corta, transcribe y manda el texto por el mismo camino que el tipeado:
 
@@ -188,7 +192,7 @@ Detalles que importan:
 - **Con `--target de` el idioma del micrófono pasa a `de`** (si no pasás `--stt-lang`). Y si usás `--stt whisper` con el modelo `.en`, la app se niega a grabar: ese modelo no falla en alemán, **inventa** palabras. Hay que bajar `ggml-small.bin` (multilingüe) y pasarlo por `--whisper-model`.
 - **Ojo**: `ollama pull mannix/whisper` no sirve. Ese modelo está hecho para *xOllama*, no para Ollama stock: lo baja y no lo puede correr.
 
-### Sin red: whisper local
+### 📴 Sin red: whisper local
 
 ```sh
 brew install whisper-cpp
@@ -201,7 +205,7 @@ curl -L -o ~/.speakeasy/models/ggml-small.en.bin \
 
 Con `--stt whisper` el audio **no sale de la máquina**: se escribe un WAV temporal, lo transcribe `whisper-cli` y se borra. Medido en este M4 con `ggml-small.en.bin` (465 MB): **0.6 s por frase** con el modelo en caché de página, 1.7 s la primera vez que se carga. No necesita clave ni daemon; compite por RAM con el LLM (small ~0.5 GB, así que con `qwen3.5:9b` quedan ~6 GB usados de 16).
 
-## Niveles
+## 🎚️ Niveles
 
 `/level` acepta la escala completa (A1, A2, B1, B2, C1, C2) y el nivel se guarda en tu perfil: es tuyo, no de la máquina. Arranca en B1 y `/reset` no lo toca.
 
@@ -221,7 +225,7 @@ La diferencia se nota. Con el mismo mensaje (*"I would like to talk about the im
 - **A1** → "That is a big topic, Fito! Since you like cooking, do you use many new kitchen tools? How does your phone help you every day?"
 - **C1** → "Some argue that while efficiency has soared, the erosion of face-to-face interaction is a serious concern we must address."
 
-### Cuánto corrige
+### ✍️ Cuánto corrige
 
 La exigencia sube con el nivel, en tres tramos. La pasada de revisión recibe el nivel y cambia de vara:
 
@@ -243,7 +247,7 @@ Con el mismo mensaje lleno de errores (*"Yesterday I go to the cinema with my fr
 
 La reescritura (`↻`) es exclusiva de C1 y C2: a un B1 no se le entrega una versión que todavía no puede producir.
 
-### Cuando un error se repite
+### 🔁 Cuando un error se repite
 
 Si una categoría aparece **dos veces o más** y todavía no tiene imagen, la pasada de revisión pide un **mnemónico estilo Ramón Campayo**: una palabra clave que suene parecido más una imagen absurda y exagerada, en tu idioma. Se muestra debajo de la corrección y se guarda para no reinventarlo cada turno:
 
@@ -256,7 +260,7 @@ El mnemónico queda en tu perfil como `mnemonic-<categoría>` y el tutor lo reci
 
 Límites: es una guía, no una medición. La app no detecta tu nivel ni te promociona sola; lo cambiás vos con `/level`. Si el nivel guardado no está en la tabla (un perfil viejo), el prompt usa solo la letra y nada más.
 
-## Alemán
+## 🇩🇪 Alemán
 
 `--target de` cambia todo lo que depende del idioma:
 
@@ -278,7 +282,7 @@ tutor> Gut, Fito! Ich heiße Maria. Sprich nach: Ich heiße Maria. Woher kommst 
 
 Arriba de A1 el tutor vuelve a conversar: el modo lección es solo para el que empieza de cero. Hay una persona de ejemplo en `personas/deutsch.md`.
 
-## Voz
+## 🔊 Voz
 
 La voz la sirve Phonon desde Ollama. `--voice` acepta dos atajos o el nombre exacto de una voz:
 
@@ -302,7 +306,7 @@ voz: Freya · usa /voice femenina, /voice masculina o un nombre
 
 El cambio vale desde la frase siguiente (lo que ya está en la cola conserva su voz) y **no se guarda**: para que sea permanente, pasá el flag.
 
-## La voz del tutor: persona editable
+## 🎭 La voz del tutor: persona editable
 
 El comportamiento del tutor se parte en dos: **reglas fijas** (texto plano para que el TTS no lea asteriscos, no corregir dentro de la respuesta, responder en inglés, no pasar de 45 palabras) y **estilo**, que es editable.
 
@@ -320,7 +324,7 @@ No grammar lectures: correct in the flow, never explain a rule unless asked.
 
 Lo que **no** podés cambiar: las reglas fijas. Si las pisaras, se rompería el audio (el TTS leería el markdown) o las correcciones (el tutor empezaría a corregir en voz alta). Los datos —nivel, hechos, mnemónicos, resumen— se agregan siempre.
 
-### Ejemplo: tutor full slang americano
+### 🤙 Ejemplo: tutor full slang americano
 
 Hay uno listo en `personas/slang-americano.md`:
 
@@ -337,7 +341,7 @@ Con el mismo mensaje que siempre:
 
 El slang cambia la voz, no las correcciones: siguen saliendo con el nivel y la exigencia de siempre.
 
-### Cambiar de tutor en plena sesión
+### 🔄 Cambiar de tutor en plena sesión
 
 `/persona` sin argumento muestra cuál está sonando y cuáles hay; `/persona slang-americano` cambia la voz **y** su compañera de correcciones sin reiniciar; `/persona off` vuelve al de fábrica.
 
@@ -351,7 +355,7 @@ voz: You are a native American English speaker … · correcciones: You are that
 
 Busca en `~/.speakeasy/personas/` (los dos ejemplos ya están copiados ahí) y acepta también una ruta: `/persona ./personas/mi-tutor.md`. Si el archivo tiene un `<nombre>-review.md` al lado, lo carga como tono de las correcciones.
 
-### Correcciones con chicana
+### 😏 Correcciones con chicana
 
 La pasada de correcciones tiene **su propia persona**: `--review-persona`. Son dos prompts distintos, así que un tutor gracioso puede corregir en serio, y un tutor serio puede cargarte.
 
@@ -365,7 +369,7 @@ La pasada de correcciones tiene **su propia persona**: `--review-persona`. Son d
 
 La nota sigue diciendo qué está mal: la broma va **encima** de la explicación, nunca en lugar de ella, y el prompt prohíbe insultar a la persona (solo al error). Como las notas se imprimen y no se hablan, la chicana no entra al audio.
 
-## Correcciones y perfil del alumno
+## 📝 Correcciones y perfil del alumno
 
 Cada mensaje tuyo son **dos peticiones**, con papeles separados:
 
@@ -395,7 +399,7 @@ Límites que conviene saber:
 
 El parser tolera las formas en que los modelos rompen el contrato: una lista desnuda en vez del objeto, `[]` cuando no hay nada que corregir, y comillas dobles sin escapar dentro de un valor —esta última era la que producía `could not read corrections`—. Todo cubierto con tests.
 
-## Progreso
+## 📈 Progreso
 
 `/progress` muestra **qué hiciste**, no qué sabés:
 
@@ -413,11 +417,11 @@ progreso · semana (6 días activos, racha 4)
 - **El resumen entre comillas** es una llamada al modelo con 8 s de tope: si no está, tarda o falla, se imprimen solo los números. Se apaga con `--progress-summary=false`.
 - Para que exista, cada turno guarda **cuándo** pasó y los errores, datos y mnemónicos dejan un rastro de eventos (máximo 1000). Los perfiles viejos se leen igual: sus turnos sin fecha quedan fuera de las cuentas.
 
-## Límites del plan gratuito
+## ⏳ Límites del plan gratuito
 
 Cada turno son dos peticiones (respuesta y corrección) y de vez en cuando una tercera (resumen). Si Groq responde 429, la app espera una vez si el `Retry-After` es corto (≤15 s) y, si no, te dice cuánto esperar. Los límites cambian: confírmalos en la consola de Groq.
 
-## Estructura
+## 🗂️ Estructura
 
 ```
 cmd/speakeasy/       CLI: arranque, comandos, bucle, grabación de un turno
@@ -437,7 +441,7 @@ odd/tasks/           planes de los hitos grandes, con su bitácora
 
 `go test -race ./...` cubre todo salvo lo que necesita hardware o servicios reales: el bucle interactivo de `run`, la reproducción por `afplay`, el micrófono y `whisper-cli`. Lo demás —`prepare`, los comandos, `/status`, la grabación y la transcripción— se prueba contra un Ollama simulado, un `ffmpeg`/`whisper-cli` falsos y un endpoint de transcripción de mentira.
 
-## Después
+## 🧭 Después
 
 Lo que quedó afuera del hito 3, en orden de utilidad: elegir el dispositivo de audio desde la app (`--stt-device` ya existe, pero hay que saber el índice), cortar la grabación por silencio (VAD) en vez de esperar el segundo Enter, y una vista de progreso como la de lingua-loop (`/progress` con estadísticas de la semana).
 
@@ -447,7 +451,7 @@ Lo que quedó afuera del hito 3, en orden de utilidad: elegir el dispositivo de 
 
 **Hito 6, planificado**: vocabulario con repaso espaciado — lista propia por alumno, categoría y rating, `/review`, y el tutor usando las palabras que te tocan (con el mnemónico que ya existe). Plan en [`odd/tasks/hito-6-vocabulario.md`](odd/tasks/hito-6-vocabulario.md).
 
-## Sin verificar
+## ⚠️ Sin verificar
 
 Se desarrolló con servidores simulados (Ollama y compatible con OpenAI). **Verificado en macOS arm64 con Ollama 0.40.13 y phonon**: `--selftest` pasa las cinco comprobaciones contra los servicios reales y una sesión con voz funciona. Queda sin probar contra Groq y contra xAI/custom. Puntos a confirmar:
 
