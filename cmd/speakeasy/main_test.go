@@ -430,7 +430,7 @@ func TestPickLearnerAsksOnTheTerminalAndGivesEachNameItsOwnFile(t *testing.T) {
 	if name != "Ana" {
 		t.Errorf("name = %q, want Ana", name)
 	}
-	want := filepath.Join(filepath.Dir(base), "users", "ana", "state.json")
+	want := filepath.Join(filepath.Dir(base), "users", "ana", "en", "state.json")
 	if path != want {
 		t.Errorf("state path = %q, want %q", path, want)
 	}
@@ -453,7 +453,7 @@ func TestPickLearnerWithTheUserFlagSkipsThePrompt(t *testing.T) {
 	if name != "Beto" || out.Len() != 0 {
 		t.Errorf("name=%q prompt=%q, want Beto and no prompt", name, out.String())
 	}
-	if want := filepath.Join(filepath.Dir(base), "users", "beto", "state.json"); path != want {
+	if want := filepath.Join(filepath.Dir(base), "users", "beto", "en", "state.json"); path != want {
 		t.Errorf("state path = %q, want %q", path, want)
 	}
 }
@@ -900,37 +900,55 @@ func TestRecordTurnCancelsTheRecorderOnEnter(t *testing.T) {
 	}
 }
 
-// TestVoiceInput pins the three startup shapes: off, enabled without a key and
-// enabled for real.
+// TestVoiceInput pins the startup shapes: off, enabled without what it needs,
+// and enabled for real. The reason is what the header shows.
 func TestVoiceInput(t *testing.T) {
-	if rec, tr, warn := voiceInput(config.Config{STT: "off"}); rec != nil || tr != nil || warn != "" {
-		t.Errorf("off: %v %v %q", rec, tr, warn)
+	if vs := voiceInput(config.Config{STT: "off"}); vs.Rec != nil || vs.Tr != nil || vs.Warn != "" || vs.Reason != "" {
+		t.Errorf("off: %+v", vs)
 	}
-	if rec, tr, warn := voiceInput(config.Config{STT: "groq", STTKeyEnv: "GROQ_API_KEY"}); rec != nil || tr != nil || !strings.Contains(warn, "GROQ_API_KEY") {
-		t.Errorf("no key: %v %v %q", rec, tr, warn)
+	vs := voiceInput(config.Config{STT: "groq", STTKeyEnv: "GROQ_API_KEY"})
+	if vs.Rec != nil || vs.Tr != nil || !strings.Contains(vs.Warn, "GROQ_API_KEY") || vs.Reason != "sin GROQ_API_KEY" {
+		t.Errorf("no key: %+v", vs)
 	}
 	// Local whisper: a missing model is caught before opening the mic.
 	missing := filepath.Join(t.TempDir(), "nope.bin")
-	if rec, tr, warn := voiceInput(config.Config{STT: "whisper", WhisperBin: "sh", WhisperModel: missing}); rec != nil || tr != nil || !strings.Contains(warn, "modelo de whisper") {
-		t.Errorf("whisper without model: %v %v %q", rec, tr, warn)
+	vs = voiceInput(config.Config{STT: "whisper", WhisperBin: "sh", WhisperModel: missing})
+	if vs.Rec != nil || vs.Tr != nil || !strings.Contains(vs.Warn, "modelo de whisper") || vs.Reason != "falta el modelo de whisper" {
+		t.Errorf("whisper without model: %+v", vs)
 	}
 	model := filepath.Join(t.TempDir(), "ggml.bin")
 	if err := os.WriteFile(model, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	rec, tr, warn := voiceInput(config.Config{STT: "whisper", WhisperBin: "sh", WhisperModel: model})
-	if rec == nil || tr == nil || warn != "" {
-		t.Errorf("whisper ready: %v %v %q", rec, tr, warn)
+	vs = voiceInput(config.Config{STT: "whisper", WhisperBin: "sh", WhisperModel: model})
+	if vs.Rec == nil || vs.Tr == nil || vs.Warn != "" {
+		t.Errorf("whisper ready: %+v", vs)
 	}
-	if _, ok := tr.(voice.WhisperCPP); !ok {
-		t.Errorf("whisper backend = %T", tr)
+	if _, ok := vs.Tr.(voice.WhisperCPP); !ok {
+		t.Errorf("whisper backend = %T", vs.Tr)
 	}
-	rec, tr, warn = voiceInput(config.Config{STT: "groq", STTKey: "k", STTModel: "m", STTDevice: ":1"})
-	if rec == nil || tr == nil || warn != "" {
-		t.Errorf("enabled: %v %v %q", rec, tr, warn)
+	vs = voiceInput(config.Config{STT: "groq", STTKey: "k", STTModel: "m", STTDevice: ":1"})
+	if vs.Rec == nil || vs.Tr == nil || vs.Warn != "" {
+		t.Errorf("enabled: %+v", vs)
 	}
 }
 
+// TestMicLabelSaysWhy keeps the header honest: "off" alone does not tell you
+// what to fix.
+func TestMicLabelSaysWhy(t *testing.T) {
+	cfg := config.Config{STT: "groq"}
+	if got := micLabel(cfg, voiceSetup{Reason: "sin GROQ_API_KEY"}); got != "off (sin GROQ_API_KEY)" {
+		t.Errorf("with a reason: %q", got)
+	}
+	if got := micLabel(cfg, voiceSetup{}); got != "off" {
+		t.Errorf("without a reason: %q", got)
+	}
+	if got := micLabel(cfg, voiceSetup{Rec: &fakeRecorder{}}); got != "groq" {
+		t.Errorf("enabled: %q", got)
+	}
+}
+
+// TestCommandVoice pins the runtime switch: an alias picks the measured voice,
 // TestResolvePersona pins the name/path/off shapes of /persona.
 func TestResolvePersona(t *testing.T) {
 	dir := t.TempDir()
@@ -1011,5 +1029,50 @@ func TestCommandPersonaSwitchesTheVoice(t *testing.T) {
 	out, _ = capture(t, func() { command(context.Background(), "/persona nope", cl, cfg, store, tut, nil) })
 	if !strings.Contains(out, "no encuentro") {
 		t.Errorf("missing: %q", out)
+	}
+}
+
+// TestPickLearnerUsesTheTargetLanguage is T1: each language is its own profile,
+// and the pre-language profile is migrated to English, never to German.
+func TestPickLearnerUsesTheTargetLanguage(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "state.json")
+	flat := filepath.Join(dir, "users", "ana", "state.json")
+	if err := os.MkdirAll(filepath.Dir(flat), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(flat, []byte(`{"profile":{"level":"C1"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	_, path, err := pickLearner(config.Config{StatePath: base, User: "Ana", Target: "de"}, bufio.NewScanner(strings.NewReader("")), &out, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, "users", "ana", "de", "state.json")
+	if path != want {
+		t.Errorf("german path = %q, want %q", path, want)
+	}
+	// The old profile went to English and the German one does not exist yet.
+	en := filepath.Join(dir, "users", "ana", "en", "state.json")
+	if b, err := os.ReadFile(en); err != nil || !strings.Contains(string(b), "C1") {
+		t.Errorf("english profile = %q, err %v", b, err)
+	}
+	if _, err := os.Stat(want); !os.IsNotExist(err) {
+		t.Errorf("german profile must start empty, stat err %v", err)
+	}
+	if !strings.Contains(out.String(), "inglés") {
+		t.Errorf("the migration should be announced: %q", out.String())
+	}
+
+	// --state keeps its meaning: that exact file, no language directory.
+	explicit := filepath.Join(dir, "mine.json")
+	if err := os.WriteFile(explicit, []byte(`{"profile":{"level":"B1"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, path, err = pickLearner(config.Config{StatePath: explicit, StateSet: true, User: "Ana", Target: "de"}, bufio.NewScanner(strings.NewReader("")), io.Discard, false)
+	if err != nil || path != explicit {
+		t.Errorf("explicit state: %q %v", path, err)
 	}
 }

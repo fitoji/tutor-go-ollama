@@ -114,10 +114,11 @@ func run() error {
 		}
 	}
 
-	rec, tr, warn := voiceInput(cfg)
-	if warn != "" {
-		fmt.Fprintln(os.Stderr, warn)
+	vs := voiceInput(cfg)
+	if vs.Warn != "" {
+		fmt.Fprintln(os.Stderr, vs.Warn)
 	}
+	rec, tr := vs.Rec, vs.Tr
 
 	finish := func() {
 		if spk != nil {
@@ -149,7 +150,7 @@ func run() error {
 		}
 	}()
 
-	fmt.Printf("speakeasy · %s · %s: %s · voz=%s · mic=%s · ctx=%d · /help para ver comandos\n", cfg.User, cfg.Provider, cfg.LLM, ttsLabel(cfg, spk), micLabel(cfg, rec), cfg.NumCtx)
+	fmt.Printf("speakeasy · %s · %s: %s · voz=%s · mic=%s · ctx=%d · /help para ver comandos\n", cfg.User, cfg.Provider, cfg.LLM, ttsLabel(cfg, spk), micLabel(cfg, vs), cfg.NumCtx)
 	if cfg.Remote() {
 		fmt.Printf("aviso: tus mensajes se envían a %s\n", hostOf(cfg.APIBase))
 	}
@@ -270,13 +271,22 @@ func pickLearner(cfg config.Config, sc *bufio.Scanner, out io.Writer, interactiv
 
 	statePath = cfg.StatePath
 	if !cfg.StateSet {
-		statePath = learner.StateFile(cfg.StatePath, name)
-		copied, err := learner.ImportLegacy(cfg.StatePath, statePath)
+		// Everything written before languages existed was English: both the
+		// shared file and the per-learner one are migrated to the English
+		// profile, never to the language being started now.
+		enPath := learner.StateFile(cfg.StatePath, name, learner.DefaultLang)
+		copied, err := learner.ImportLegacy(cfg.StatePath, enPath)
 		if err != nil {
 			fmt.Fprintf(out, "aviso: no pude importar el perfil anterior: %v\n", err)
 		} else if copied {
-			fmt.Fprintf(out, "perfil importado desde %s\n", cfg.StatePath)
+			fmt.Fprintf(out, "perfil de inglés importado desde %s\n", cfg.StatePath)
 		}
+		if copied, err := learner.ImportFlatProfile(cfg.StatePath, name); err != nil {
+			fmt.Fprintf(out, "aviso: no pude migrar el perfil a %s: %v\n", enPath, err)
+		} else if copied {
+			fmt.Fprintf(out, "perfil de inglés migrado a %s\n", enPath)
+		}
+		statePath = learner.StateFile(cfg.StatePath, name, cfg.Target)
 	}
 	// Remembered best effort: failing to write it only means we ask next time.
 	if !cfg.StateSet && name != last {
@@ -336,31 +346,52 @@ func ttsLabel(cfg config.Config, spk *speech.Speaker) string {
 	return cfg.TTS
 }
 
+// voiceSetup is the voice pipeline plus why it is missing when it is.
+type voiceSetup struct {
+	Rec    voice.Recorder
+	Tr     voice.Transcriber
+	Warn   string // the full line printed to stderr, once
+	Reason string // the short reason the header shows, e.g. "sin GROQ_API_KEY"
+}
+
 // voiceInput builds the voice pipeline. When voice input is enabled but cannot
 // work it returns a warning and nil interfaces, so an empty line stays inert
-// instead of opening the microphone for nothing.
-func voiceInput(cfg config.Config) (rec voice.Recorder, tr voice.Transcriber, warn string) {
+// instead of opening the microphone for nothing. The header repeats the reason
+// in short form: "mic=off" alone does not tell you what to fix.
+func voiceInput(cfg config.Config) voiceSetup {
 	if cfg.STT == "off" {
-		return nil, nil, ""
+		return voiceSetup{}
 	}
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		return nil, nil, "aviso: no encuentro ffmpeg (`brew install ffmpeg`), así que no puedo grabar; el Enter vacío queda sin efecto"
+		return voiceSetup{
+			Warn:   "aviso: no encuentro ffmpeg (`brew install ffmpeg`), así que no puedo grabar; el Enter vacío queda sin efecto",
+			Reason: "falta ffmpeg",
+		}
 	}
-	rec = voice.FFmpegRecorder{Path: "ffmpeg", Device: cfg.STTDevice}
+	rec := voice.FFmpegRecorder{Path: "ffmpeg", Device: cfg.STTDevice}
 	switch cfg.STT {
 	case "whisper":
 		if _, err := exec.LookPath(cfg.WhisperBin); err != nil {
-			return nil, nil, "aviso: no encuentro whisper-cli (`brew install whisper-cpp`), así que no puedo transcribir; el Enter vacío queda sin efecto"
+			return voiceSetup{
+				Warn:   "aviso: no encuentro whisper-cli (`brew install whisper-cpp`), así que no puedo transcribir; el Enter vacío queda sin efecto",
+				Reason: "falta whisper-cli",
+			}
 		}
 		if _, err := os.Stat(cfg.WhisperModel); err != nil {
-			return nil, nil, fmt.Sprintf("aviso: no encuentro el modelo de whisper en %s (bajá ggml-small.en.bin de ggerganov/whisper.cpp); el Enter vacío queda sin efecto", cfg.WhisperModel)
+			return voiceSetup{
+				Warn:   fmt.Sprintf("aviso: no encuentro el modelo de whisper en %s (bajá ggml-small.en.bin de ggerganov/whisper.cpp); el Enter vacío queda sin efecto", cfg.WhisperModel),
+				Reason: "falta el modelo de whisper",
+			}
 		}
-		return rec, voice.WhisperCPP{Bin: cfg.WhisperBin, Model: cfg.WhisperModel}, ""
+		return voiceSetup{Rec: rec, Tr: voice.WhisperCPP{Bin: cfg.WhisperBin, Model: cfg.WhisperModel}}
 	default:
 		if cfg.STTKey == "" {
-			return nil, nil, fmt.Sprintf("aviso: falta %s, así que no puedo transcribir; el Enter vacío queda sin efecto", cfg.STTKeyEnv)
+			return voiceSetup{
+				Warn:   fmt.Sprintf("aviso: falta %s, así que no puedo transcribir; el Enter vacío queda sin efecto", cfg.STTKeyEnv),
+				Reason: "sin " + cfg.STTKeyEnv,
+			}
 		}
-		return rec, voice.GroqTranscriber{Base: cfg.STTBase, Key: cfg.STTKey, Model: cfg.STTModel}, ""
+		return voiceSetup{Rec: rec, Tr: voice.GroqTranscriber{Base: cfg.STTBase, Key: cfg.STTKey, Model: cfg.STTModel}}
 	}
 }
 
@@ -405,8 +436,11 @@ func resolvePersona(dir, arg string) (voice, review string, err error) {
 }
 
 // micLabel names the transcription backend, or off.
-func micLabel(cfg config.Config, rec voice.Recorder) string {
-	if rec == nil {
+func micLabel(cfg config.Config, vs voiceSetup) string {
+	if vs.Rec == nil {
+		if vs.Reason != "" {
+			return "off (" + vs.Reason + ")"
+		}
 		return "off"
 	}
 	return cfg.STT

@@ -12,7 +12,7 @@ func clean(t *testing.T) {
 	for _, k := range []string{
 		"SPEAKEASY_PROVIDER", "SPEAKEASY_LLM", "SPEAKEASY_API_BASE", "SPEAKEASY_API_KEY_ENV",
 		"SPEAKEASY_TTS", "SPEAKEASY_VOICE", "SPEAKEASY_NUM_CTX", "SPEAKEASY_KEEP_ALIVE", "SPEAKEASY_NOTES",
-		"SPEAKEASY_USER", "OLLAMA_HOST", "GROQ_API_KEY", "XAI_API_KEY", "LLM_API_KEY", "MY_KEY",
+		"SPEAKEASY_USER", "SPEAKEASY_TARGET", "OLLAMA_HOST", "GROQ_API_KEY", "XAI_API_KEY", "LLM_API_KEY", "MY_KEY",
 	} {
 		t.Setenv(k, "")
 	}
@@ -188,5 +188,27 @@ func TestVoiceAliases(t *testing.T) {
 	t.Setenv("SPEAKEASY_VOICE", "masculina")
 	if c, err := Parse(nil); err != nil || c.Voice != "Spencer" {
 		t.Errorf("voice from env: %+v %v", c, err)
+	}
+}
+
+// TestTargetLanguage pins the only two languages that exist today.
+func TestTargetLanguage(t *testing.T) {
+	clean(t)
+	t.Setenv("GROQ_API_KEY", "k")
+	if c, err := Parse(nil); err != nil || c.Target != "en" {
+		t.Errorf("default target: %+v %v", c, err)
+	}
+	if c, err := Parse([]string{"--target", "DE"}); err != nil || c.Target != "de" {
+		t.Errorf("--target DE: %+v %v", c, err)
+	}
+	if _, err := Parse([]string{"--target", "fr"}); err == nil || !strings.Contains(err.Error(), "en or de") {
+		t.Errorf("unknown target: %v", err)
+	}
+	if _, err := Parse([]string{"--target", ""}); err == nil || !strings.Contains(err.Error(), "en or de") {
+		t.Errorf("empty target: %v", err)
+	}
+	t.Setenv("SPEAKEASY_TARGET", "de")
+	if c, err := Parse(nil); err != nil || c.Target != "de" {
+		t.Errorf("target from env: %+v %v", c, err)
 	}
 }

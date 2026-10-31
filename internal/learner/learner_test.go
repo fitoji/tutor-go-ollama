@@ -67,14 +67,58 @@ func TestAskPromptIsExactlyTheDocumentedLine(t *testing.T) {
 
 func TestStateFileLivesUnderTheDefaultBase(t *testing.T) {
 	base := filepath.Join("/home", "u", ".speakeasy", "state.json")
-	want := filepath.Join("/home", "u", ".speakeasy", "users", "ana", "state.json")
-	if got := StateFile(base, "Ana"); got != want {
+	want := filepath.Join("/home", "u", ".speakeasy", "users", "ana", "en", "state.json")
+	if got := StateFile(base, "Ana", "en"); got != want {
 		t.Errorf("StateFile = %q, want %q", got, want)
 	}
+	// Each language is its own profile.
+	want = filepath.Join("/home", "u", ".speakeasy", "users", "ana", "de", "state.json")
+	if got := StateFile(base, "Ana", "de"); got != want {
+		t.Errorf("StateFile(de) = %q, want %q", got, want)
+	}
 	// An unusable name still gets a directory instead of an empty path segment.
-	want = filepath.Join("/home", "u", ".speakeasy", "users", DefaultName, "state.json")
-	if got := StateFile(base, "!!!"); got != want {
+	want = filepath.Join("/home", "u", ".speakeasy", "users", DefaultName, "en", "state.json")
+	if got := StateFile(base, "!!!", "en"); got != want {
 		t.Errorf("StateFile(!!!) = %q, want %q", got, want)
+	}
+}
+
+// TestImportFlatProfileMovesTheOldProfileToEnglish is the upgrade: a profile
+// written before languages existed is English, and it must not be lost or land
+// in the German one.
+func TestImportFlatProfileMovesTheOldProfileToEnglish(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "state.json")
+	flat := filepath.Join(filepath.Dir(base), "users", "ana", "state.json")
+	if err := os.MkdirAll(filepath.Dir(flat), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := `{"profile":{"level":"C1"}}`
+	if err := os.WriteFile(flat, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	copied, err := ImportFlatProfile(base, "Ana")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !copied {
+		t.Fatal("the old profile should be migrated")
+	}
+	got, err := os.ReadFile(StateFile(base, "Ana", "en"))
+	if err != nil || string(got) != content {
+		t.Errorf("english profile = %q, err %v", got, err)
+	}
+	// The German profile must not exist: a new language starts from zero.
+	if _, err := os.Stat(StateFile(base, "Ana", "de")); !os.IsNotExist(err) {
+		t.Errorf("german profile must not be created, stat err %v", err)
+	}
+	// The old file stays as it was.
+	if b, err := os.ReadFile(flat); err != nil || string(b) != content {
+		t.Errorf("old profile touched: %q %v", b, err)
+	}
+	// Running it again is a no-op.
+	if copied, err := ImportFlatProfile(base, "Ana"); err != nil || copied {
+		t.Errorf("second run copied=%v err=%v", copied, err)
 	}
 }
 
@@ -139,7 +183,7 @@ func TestImportLegacyCopiesTheOldProfileOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ana := StateFile(base, "Ana")
+	ana := StateFile(base, "Ana", "en")
 	copied, err := ImportLegacy(base, ana)
 	if err != nil {
 		t.Fatal(err)
@@ -159,7 +203,7 @@ func TestImportLegacyCopiesTheOldProfileOnce(t *testing.T) {
 		t.Errorf("the old file must survive the import: %v", err)
 	}
 
-	beto := StateFile(base, "Beto")
+	beto := StateFile(base, "Beto", "en")
 	copied, err = ImportLegacy(base, beto)
 	if err != nil {
 		t.Fatal(err)
@@ -177,7 +221,7 @@ func TestImportLegacyLeavesAnExistingProfileAlone(t *testing.T) {
 	if err := os.WriteFile(base, []byte(`{"profile":{"level":"C1"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	target := StateFile(base, "Ana")
+	target := StateFile(base, "Ana", "en")
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +249,7 @@ func TestImportLegacyWritesA0600CopyAndNoTempFile(t *testing.T) {
 	if err := os.WriteFile(base, []byte(`{"profile":{"level":"C1"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	target := StateFile(base, "Ana")
+	target := StateFile(base, "Ana", "en")
 	if _, err := ImportLegacy(base, target); err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +276,7 @@ func TestImportLegacyNeverTouchesTheLegacyBytesNorTheSecondLearner(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ImportLegacy(base, StateFile(base, "Ana")); err != nil {
+	if _, err := ImportLegacy(base, StateFile(base, "Ana", "en")); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.ReadFile(base)
@@ -242,7 +286,7 @@ func TestImportLegacyNeverTouchesTheLegacyBytesNorTheSecondLearner(t *testing.T)
 	if !bytes.Equal(before, after) {
 		t.Errorf("legacy bytes changed: %q -> %q", before, after)
 	}
-	beto := StateFile(base, "Beto")
+	beto := StateFile(base, "Beto", "en")
 	copied, err := ImportLegacy(base, beto)
 	if err != nil || copied {
 		t.Errorf("copied=%v err=%v, want no second import", copied, err)
@@ -254,7 +298,7 @@ func TestImportLegacyNeverTouchesTheLegacyBytesNorTheSecondLearner(t *testing.T)
 
 func TestImportLegacyWithoutALegacyFileDoesNothing(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "state.json")
-	copied, err := ImportLegacy(base, StateFile(base, "Ana"))
+	copied, err := ImportLegacy(base, StateFile(base, "Ana", "en"))
 	if err != nil || copied {
 		t.Errorf("copied=%v err=%v, want nothing to do", copied, err)
 	}

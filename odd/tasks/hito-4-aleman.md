@@ -22,7 +22,7 @@ Branch: `main`. Delivery: work-unit commits. Runner: `go test -race ./...`. Esta
 
 | ID | Specs | Ruta | Estado |
 |---|---|---|---|
-| T1 | S2 | inline: ruta por idioma + copia del perfil actual a `en/` (riesgo: datos guardados) | pendiente |
+| T1 | S2 | inline: ruta por idioma + copia del perfil actual a `en/` (riesgo: datos guardados) | **hecho** |
 | T2 | S1, S3, S4 | inline: `--target` atravesando tutor, revisión, resumen | pendiente |
 | T3 | S5 | inline: perfiles MCER de alemán, desde el temario documentado | pendiente |
 | T4 | S6, S7 | inline: default de voz y STT por idioma + validaciones | pendiente |
@@ -49,3 +49,5 @@ Branch: `main`. Delivery: work-unit commits. Runner: `go test -race ./...`. Esta
 **L8** (usuario, textual): «anotalo para el hito 4 junto con say»
 
 **L9** — El VAD va **en Go**, no en Python: su `vad.py` ya es energía RMS sin modelo, y `voice.Silent` es la misma cuenta. El cambio real es que el recorder lea el stdout de ffmpeg por bloques en vez de juntarlo entero. `say` entra como segundo backend de TTS porque es lo que destraba el italiano y el fallback sin Ollama, aunque para alemán no sea necesario.
+
+**L10** — T1 hecho: `users/<nombre>/<idioma>/state.json`, `--target en|de`, y migración del perfil sin idioma a `en/` (copia, el original queda). Verificado a mano: arrancar con `--target de` sobre un perfil viejo lo migra a `en/` y crea `de/` vacío. Los prompts siguen en inglés: eso es T2.

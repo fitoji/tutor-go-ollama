@@ -25,6 +25,7 @@ type Config struct {
 	Think         bool   // allow thinking mode (Ollama only)
 	Corrections   bool   // run the correction pass
 	NotesLang     string // language of the short correction notes
+	Target        string // language being practised: en or de
 	Persona       string // file that replaces the tutor's style
 	ReviewPersona string // file that sets the tone of the correction notes
 	User          string // learner name (empty = ask at startup)
@@ -39,7 +40,7 @@ type Config struct {
 	APIKey    string
 
 	// Voice input: Enter on an empty line records and transcribes.
-	STT          string // groq or off
+	STT          string // groq, whisper or off
 	STTModel     string
 	STTLang      string // ISO-639-1; empty lets the model guess
 	STTDevice    string // ffmpeg avfoundation audio device
@@ -125,6 +126,7 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.NotesLang, "notes", envOr("SPEAKEASY_NOTES", "Spanish"), "language of correction notes")
 	fs.StringVar(&c.Persona, "persona", envOr("SPEAKEASY_PERSONA", filepath.Join(home, ".speakeasy", "tutor.md")), "file that replaces the tutor's style (missing = built-in)")
 	fs.StringVar(&c.ReviewPersona, "review-persona", envOr("SPEAKEASY_REVIEW_PERSONA", filepath.Join(home, ".speakeasy", "review.md")), "file that sets the tone of the correction notes (missing = neutral)")
+	fs.StringVar(&c.Target, "target", envOr("SPEAKEASY_TARGET", "en"), "language you are practising: en or de")
 	fs.StringVar(&c.User, "user", envOr("SPEAKEASY_USER", ""), "learner name; each name keeps its own level and corrections (asks at startup when empty)")
 	fs.StringVar(&c.StatePath, "state", filepath.Join(home, ".speakeasy", "state.json"), "state file; without this flag each learner gets a directory next to it")
 	fs.BoolVar(&c.Mute, "mute", false, "text only, no voice")
@@ -150,6 +152,10 @@ func Parse(args []string) (Config, error) {
 		}
 	})
 	c.User = strings.TrimSpace(c.User)
+	c.Target = strings.ToLower(strings.TrimSpace(c.Target))
+	if c.Target != "en" && c.Target != "de" {
+		return c, fmt.Errorf("unknown target %q (use en or de)", c.Target)
+	}
 	c.STT = strings.ToLower(strings.TrimSpace(c.STT))
 	if c.STT != "groq" && c.STT != "whisper" && c.STT != "off" {
 		return c, fmt.Errorf("unknown stt %q (use groq, whisper or off)", c.STT)

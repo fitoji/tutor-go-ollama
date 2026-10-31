@@ -43,14 +43,48 @@ func Slug(name string) string {
 	return s
 }
 
-// StateFile is the state file of one learner, next to the base state path that
-// used to hold everybody's profile: <dir(base)>/users/<slug>/state.json.
-func StateFile(base, name string) string {
+// StateFile is the state file of one learner in one language, next to the base
+// state path that used to hold everybody's profile:
+// <dir(base)>/users/<slug>/<lang>/state.json. Each language is its own tutor,
+// with its own onboarding, level and mistakes.
+func StateFile(base, name, lang string) string {
 	slug := Slug(name)
 	if slug == "" {
 		slug = DefaultName
 	}
-	return filepath.Join(filepath.Dir(base), "users", slug, "state.json")
+	if lang == "" {
+		lang = DefaultLang
+	}
+	return filepath.Join(filepath.Dir(base), "users", slug, Slug(lang), "state.json")
+}
+
+// DefaultLang is the language every profile written before languages existed
+// belonged to.
+const DefaultLang = "en"
+
+// ImportFlatProfile copies the per-learner file written before languages existed
+// (users/<slug>/state.json) into that learner's English profile. The old file is
+// left untouched, and a new language never inherits it.
+func ImportFlatProfile(base, name string) (bool, error) {
+	slug := Slug(name)
+	if slug == "" {
+		slug = DefaultName
+	}
+	flat := filepath.Join(filepath.Dir(base), "users", slug, "state.json")
+	target := StateFile(base, name, DefaultLang)
+	if _, err := os.Stat(target); err == nil {
+		return false, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	b, err := os.ReadFile(flat)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return writeCopy(target, b)
 }
 
 // LastFile is where the last used name is remembered, so the next start can
@@ -134,10 +168,20 @@ func ImportLegacy(base, target string) (bool, error) {
 		return false, err
 	}
 	// Another learner already exists: the shared profile was theirs, not ours.
-	usersDir := filepath.Dir(filepath.Dir(target))
-	if others, err := filepath.Glob(filepath.Join(usersDir, "*", "state.json")); err == nil && len(others) > 0 {
-		return false, nil
+	// Another learner already exists: the shared profile was theirs, not ours.
+	// Profiles live at users/<slug>/<lang>/state.json, and older ones at
+	// users/<slug>/state.json before the migration runs.
+	usersDir := filepath.Dir(filepath.Dir(filepath.Dir(target)))
+	for _, pattern := range []string{"*/*/state.json", "*/state.json"} {
+		if others, err := filepath.Glob(filepath.Join(usersDir, pattern)); err == nil && len(others) > 0 {
+			return false, nil
+		}
 	}
+	return writeCopy(target, b)
+}
+
+// writeCopy writes b to target atomically and privately.
+func writeCopy(target string, b []byte) (bool, error) {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return false, err
 	}
