@@ -17,12 +17,12 @@ func turnTokens(t Turn) int { return EstimateTokens(t.Content) + 6 }
 
 // tutorRules are the invariants: what makes the reply work on screen and in
 // the voice. A persona file may change the tutor's style, never these.
-const tutorRules = `You are a friendly English conversation partner helping a learner practice speaking.
+const tutorRules = `You are a friendly %s conversation partner helping a learner practice speaking.
 Your replies are read aloud, so:
 - Plain spoken text only: no markdown, lists, emojis, asterisks or stage directions.
 - End with one simple follow-up question that keeps the conversation going.
 - Do not point out mistakes. Another tool shows corrections. If the learner makes an error, just use the correct form naturally in your reply.
-- Always answer in English, even if the learner writes in another language, unless they explicitly ask for a translation.
+- Always answer in %s, even if the learner writes in another language, unless they explicitly ask for a translation.
 - Match the learner's level (given below). Prefer common words; explain a hard word only if asked.
 - Never exceed 45 words.`
 
@@ -37,14 +37,22 @@ If the learner changes the subject, follow them naturally.`
 // System assembles the system prompt: fixed tutor rules, the learner profile
 // and the rolling summary. Everything the model must never forget lives here,
 // at the top, and is rebuilt on every request.
-func System(d Data, persona string) string {
+func System(d Data, persona, target string) string {
+	if target == "" {
+		target = "en"
+	}
+	lang := LanguageName(target)
 	var sb strings.Builder
-	sb.WriteString(tutorRules)
+	fmt.Fprintf(&sb, tutorRules, lang, lang)
 	fmt.Fprintf(&sb, "\n\nLearner level: %s.", d.Profile.Level)
 	// The letter alone says nothing: carry what that level means so a small
-	// model aims at the right vocabulary, grammar and subjects.
-	if p, ok := LevelOf(d.Profile.Level); ok {
+	// model aims at the right vocabulary, grammar and subjects. Until the
+	// target has its own profile (hito 4, T3), only the length is safe: an
+	// English grammar list would teach the wrong language.
+	if p, ok := LevelOf(d.Profile.Level); ok && target == "en" {
 		sb.WriteString(p.Block())
+	} else if ok {
+		fmt.Fprintf(&sb, "\nReply length: %s.", p.Length)
 	} else {
 		sb.WriteString("\nReply length: 1-3 sentences.")
 	}
@@ -106,8 +114,8 @@ func writeFacts(sb *strings.Builder, d Data) {
 // Build returns the exact message list for the next chat request: the system
 // prompt followed by as many recent turns as fit in the budget
 // (numCtx - replyReserve). The newest turn is always included.
-func Build(d Data, persona string, numCtx, replyReserve int) []Turn {
-	sys := System(d, persona)
+func Build(d Data, persona, target string, numCtx, replyReserve int) []Turn {
+	sys := System(d, persona, target)
 	budget := numCtx - replyReserve - EstimateTokens(sys) - 6
 	start := len(d.Turns)
 	used := 0
@@ -161,12 +169,12 @@ func PlanFold(d Data, numCtx int) int {
 	return n
 }
 
-const summaryPrompt = `You maintain the memory of an English tutor. Merge the previous summary and the new transcript into one updated summary of at most 120 words.
+const summaryPrompt = `You maintain the memory of a %s tutor. Merge the previous summary and the new transcript into one updated summary of at most 120 words.
 Keep: facts about the learner (job, family, plans, opinions), topics discussed, anything the tutor asked that is still unanswered, and the learner's recurring difficulties.
 Drop greetings and filler. Write in third person, plain prose. Output only the summary.`
 
 // SummaryRequest builds the messages for the summarization call.
-func SummaryRequest(prev string, old []Turn) []Turn {
+func SummaryRequest(prev string, old []Turn, target string) []Turn {
 	var sb strings.Builder
 	if prev == "" {
 		sb.WriteString("Previous summary: (none)\n\n")
@@ -182,7 +190,7 @@ func SummaryRequest(prev string, old []Turn) []Turn {
 		sb.WriteString(who + ": " + t.Content + "\n")
 	}
 	return []Turn{
-		{Role: "system", Content: summaryPrompt},
+		{Role: "system", Content: fmt.Sprintf(summaryPrompt, LanguageName(target))},
 		{Role: "user", Content: sb.String()},
 	}
 }

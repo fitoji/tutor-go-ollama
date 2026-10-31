@@ -101,9 +101,9 @@ func repeatedTroubleSpots(d conv.Data) []troubleSpot {
 // correctionSystem builds the review prompt. The JSON shape is spelled out
 // because OpenAI-compatible providers only offer JSON mode (no schema), and
 // JSON mode requires the word "JSON".
-func correctionSystem(level string, p correctionPolicy, notesLang string, spots []troubleSpot, reviewPersona string) string {
+func correctionSystem(level string, p correctionPolicy, notesLang string, spots []troubleSpot, reviewPersona, target string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "You are an English teacher reviewing ONE message written by a learner at CEFR level %s.\n", level)
+	fmt.Fprintf(&b, "You are a %s teacher reviewing ONE message written by a learner at CEFR level %s.\n", conv.LanguageName(target), level)
 	b.WriteString(p.Rules + "\n")
 	b.WriteString("Ignore capitalization, punctuation and obvious typos. If the message is fine, return an empty list.\n")
 	if tone := strings.TrimSpace(reviewPersona); tone != "" {
@@ -281,7 +281,7 @@ func (t *Tutor) review() string {
 // sends for a new learner.
 func (t *Tutor) correctionRequest(text, level string, p correctionPolicy, spots []troubleSpot) llm.Request {
 	msgs := []llm.Message{
-		{Role: "system", Content: correctionSystem(level, p, t.st.NotesLang, spots, t.review())},
+		{Role: "system", Content: correctionSystem(level, p, t.st.NotesLang, spots, t.review(), t.st.Target)},
 		{Role: "user", Content: "Learner message: " + text},
 	}
 	req := t.request(msgs, 0, p.Tokens)

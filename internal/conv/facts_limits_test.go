@@ -17,7 +17,7 @@ func TestSystemNeverMentionsATagProtocol(t *testing.T) {
 			"name": "Fito", "country": "Argentina", "city": "Madrid", "hobby": "cooking"}}},
 	}
 	for name, d := range profiles {
-		sys := System(d, "")
+		sys := System(d, "", "en")
 		for _, bad := range []string{"REMEMBER", "key=value", "tag protocol"} {
 			if strings.Contains(sys, bad) {
 				t.Errorf("%s prompt mentions %q:\n%s", name, bad, sys)

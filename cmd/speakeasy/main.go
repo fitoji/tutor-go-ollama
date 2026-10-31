@@ -331,6 +331,7 @@ func settingsFor(cfg config.Config, persona, reviewPersona string) tutor.Setting
 		Think:         cfg.Think,
 		ThinkField:    !cfg.Remote(),
 		NotesLang:     cfg.NotesLang,
+		Target:        cfg.Target,
 		Persona:       persona,
 		ReviewPersona: reviewPersona,
 	}

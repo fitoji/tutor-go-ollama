@@ -705,3 +705,19 @@ func TestSetPersonasChangesTheNextPrompt(t *testing.T) {
 		t.Errorf("Personas = %q / %q", voice, review)
 	}
 }
+
+// TestGermanCorrectionsNameTheLanguage keeps the review pass in the target
+// language: a German learner must not be reviewed by an English teacher.
+func TestGermanCorrectionsNameTheLanguage(t *testing.T) {
+	f := &fakeOllama{json: `{"corrections":[],"facts":[]}`}
+	tut, _ := setup(t, f, 8192)
+	tut.st.Target = "de"
+
+	if _, err := tut.Correct(context.Background(), "Ich habe gestern ins Kino gegangen"); err != nil {
+		t.Fatal(err)
+	}
+	sys := f.requests()[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if !strings.Contains(sys, "German teacher") {
+		t.Errorf("review prompt = %s", sys)
+	}
+}

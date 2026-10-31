@@ -30,7 +30,7 @@ func TestLevelProfilesCoverTheWholeScale(t *testing.T) {
 // TestSystemInjectsTheLevelProfile is the point of the feature: the letter is
 // not enough, the model gets what that level means.
 func TestSystemInjectsTheLevelProfile(t *testing.T) {
-	sys := System(Data{Profile: Profile{Level: "B1"}}, "")
+	sys := System(Data{Profile: Profile{Level: "B1"}}, "", "en")
 	for _, want := range []string{
 		"Learner level: B1", "intermediate", "2000-3000",
 		"present perfect", "conditional", "topics",
@@ -40,19 +40,19 @@ func TestSystemInjectsTheLevelProfile(t *testing.T) {
 		}
 	}
 	// A1 must not carry B1's grammar.
-	a1 := System(Data{Profile: Profile{Level: "A1"}}, "")
+	a1 := System(Data{Profile: Profile{Level: "A1"}}, "", "en")
 	if strings.Contains(a1, "present perfect") {
 		t.Errorf("A1 prompt should not teach B1 grammar:\n%s", a1)
 	}
 	// Length grows with the level.
-	if a1 := System(Data{Profile: Profile{Level: "A1"}}, ""); !strings.Contains(a1, "Reply length: 1-2 sentences") {
+	if a1 := System(Data{Profile: Profile{Level: "A1"}}, "", "en"); !strings.Contains(a1, "Reply length: 1-2 sentences") {
 		t.Errorf("A1 length missing:\n%s", a1)
 	}
-	if c1 := System(Data{Profile: Profile{Level: "C1"}}, ""); !strings.Contains(c1, "Reply length: 3-5 sentences") {
+	if c1 := System(Data{Profile: Profile{Level: "C1"}}, "", "en"); !strings.Contains(c1, "Reply length: 3-5 sentences") {
 		t.Errorf("C1 length missing:\n%s", c1)
 	}
 	// A level nobody knows still produces a usable prompt, without a block.
-	odd := System(Data{Profile: Profile{Level: "B9"}}, "")
+	odd := System(Data{Profile: Profile{Level: "B9"}}, "", "en")
 	if !strings.Contains(odd, "Learner level: B9") || strings.Contains(odd, "Vocabulary target") || !strings.Contains(odd, "Reply length: 1-3 sentences") {
 		t.Errorf("an unknown level must fall back to the bare line:\n%s", odd)
 	}

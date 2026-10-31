@@ -32,7 +32,7 @@ func TestLoadPersonaMissingFileIsNotAnError(t *testing.T) {
 // TestSystemUsesThePersonaAsTheVoice keeps the two halves apart: the invariants
 // stay, the style is whatever the file says, and it comes last.
 func TestSystemUsesThePersonaAsTheVoice(t *testing.T) {
-	sys := System(Data{Profile: Profile{Level: "B1"}}, "You are a cowboy. Say howdy.")
+	sys := System(Data{Profile: Profile{Level: "B1"}}, "You are a cowboy. Say howdy.", "en")
 	if !strings.Contains(sys, "Say howdy") {
 		t.Errorf("the persona is missing:\n%s", sys)
 	}
@@ -49,7 +49,7 @@ func TestSystemUsesThePersonaAsTheVoice(t *testing.T) {
 
 // TestSystemFallsBackToTheBuiltInStyle covers the default file being absent.
 func TestSystemFallsBackToTheBuiltInStyle(t *testing.T) {
-	sys := System(Data{Profile: Profile{Level: "B1"}}, "   ")
+	sys := System(Data{Profile: Profile{Level: "B1"}}, "   ", "en")
 	if !strings.Contains(sys, "warm, patient and straightforward") {
 		t.Errorf("the default style is missing:\n%s", sys)
 	}
