@@ -4,13 +4,36 @@ Practica **inglés o alemán** hablando con un LLM, desde la terminal. Pensado p
 
 ✅ **Estado:** hitos 1 a 5. Conversación por texto o **voz** (Enter vacío, con corte por silencio), respuesta hablada, un perfil **por alumno y por idioma** (inglés y alemán), correcciones que se endurecen con el nivel, mnemónicos cuando un error se repite, personas editables y `/progress`. Sin dependencias de Go: el binario, `ffmpeg` y opcionalmente `whisper-cli`.
 
-## 🚀 Uso rápido (Groq, para testear)
+## ⚡ Arranque rápido
+
+Todo local: chat, voz y micrófono. Sin claves y sin red.
+
+```sh
+go build -o speakeasy ./cmd/speakeasy     # una vez
+```
+
+**Inglés**, con el tutor slang y correcciones con chicana:
+
+```sh
+./speakeasy --provider ollama --llm qwen3.5:9b --stt whisper \
+  --persona personas/slang-americano.md \
+  --review-persona personas/slang-americano-review.md
+```
+
+**Alemán** (en A1 arranca como lección desde cero):
+
+```sh
+./speakeasy --provider ollama --llm qwen3.5:9b --stt whisper --target de
+```
+
+Necesita `ollama` con sus modelos (`ollama pull qwen3.5:9b`, `ollama pull phonon`; para alemán también `ollama pull phonon:de`), `ffmpeg` y `whisper-cpp` con el modelo multilingüe (ver *Sin red: whisper local* más abajo). Sin `--persona`, el tutor es el de fábrica; `/persona` lo cambia en plena sesión.
+
+## ☁️ Uso rápido con Groq (para testear)
 
 ```sh
 export GROQ_API_KEY=...        # clave gratuita desde la consola de Groq
 ollama pull phonon             # solo si quieres voz
 
-go build -o speakeasy ./cmd/speakeasy
 ./speakeasy                    # chat en Groq + voz local
 ./speakeasy --mute             # solo texto: no hace falta Ollama
 ```
