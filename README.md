@@ -2,7 +2,7 @@
 
 Practica inglés hablando con un LLM, desde la terminal. Pensado para un Mac mini M4 de 16 GB: un solo binario en Go, sin dependencias externas. La voz es local (Phonon, vía Ollama); el chat puede ser una API económica (por defecto Groq, con plan gratuito) o un modelo local.
 
-Estado: hitos 1 y 2 (conversación por texto con respuesta hablada, memoria acotada, correcciones). Falta el hito 3, la entrada por voz (ver más abajo).
+Estado: hitos 1, 2 y 3. Conversación por texto o **voz** (Enter vacío), respuesta hablada, memoria acotada por alumno, correcciones que se endurecen con el nivel, mnemónicos cuando un error se repite, y un tutor cuya voz y cuyo tono de corrección se eligen con un archivo. Sin dependencias de Go: el binario, `ffmpeg` y opcionalmente `whisper-cli`.
 
 ## Uso rápido (Groq, para testear)
 
@@ -41,7 +41,7 @@ Ejemplos:
 
 Con un proveedor remoto **tus mensajes salen a un servidor externo** (la app lo recuerda al arrancar). Usa modelos sin razonamiento largo: los que «piensan» gastan el límite de tokens antes de contestar. Si el modelo emite bloques `<think>...</think>`, se descartan.
 
-Otras opciones (flag o variable): `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice` (femenina, masculina o un nombre exacto), `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false` (oculta los `✎`; la pasada de revisión sigue guardando datos), `--persona` (archivo que cambia la voz del tutor), `--review-persona` (archivo que cambia el tono de las correcciones), `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo).
+Otras opciones (flag o variable): `--user` / `SPEAKEASY_USER` (nombre del alumno; si falta, lo pregunta), `--tts` / `SPEAKEASY_TTS`, `--voice` (femenina, masculina o un nombre exacto), `--num-ctx` (4096 remoto, 8192 Ollama), `--keep-alive` (solo Ollama), `--notes` (idioma de las correcciones, Spanish), `--mem-limit` (MiB para este proceso), `--think` (solo Ollama), `--corrections=false` (oculta los `✎`; la pasada de revisión sigue guardando datos), `--persona` (archivo que cambia la voz del tutor), `--review-persona` (archivo que cambia el tono de las correcciones), `--state` (archivo exacto, sin separar por usuario), `--host` (el Ollama que sirve la voz), `--selftest` (ver abajo). Los del micrófono (`--stt*`, `--whisper-*`, `--record-max`) están en [Entrada por voz](#entrada-por-voz).
 
 ### Antes de la primera sesión: `--selftest`
 
@@ -71,7 +71,7 @@ Lo que mató a LinguaLoop fue perder contexto y cargar varios modelos a la vez. 
 - **Ollama: `num_ctx` fijo e idéntico en todas las peticiones.** Si cambia entre peticiones, Ollama recarga el modelo; y si no se indica, el valor por defecto es pequeño y trunca en silencio el principio del prompt (el system prompt incluido).
 - **La app es dueña de la memoria, no el modelo.** Cada petición se reconstruye: reglas del tutor + perfil (nivel, temas, errores recurrentes) + resumen rodante + últimos turnos que quepan en el presupuesto (`--num-ctx`). Cuando los turnos guardados pasan del 45 % del presupuesto, los más antiguos se resumen en segundo plano (≤120 palabras). La estimación de tokens es pesimista (3 caracteres por token). En remoto el presupuesto es de 4096 para que cada petición sea pequeña y quepa en los límites por minuto del plan gratuito.
 - **Audio con memoria acotada:** como mucho ~3 clips existen a la vez (sonando, en espera, sintetizándose). Si el reproductor se atasca, el flujo del LLM se frena en vez de acumular.
-- **Estado:** un JSON pequeño **por alumno** (ver abajo), con escritura atómica, máximo 200 turnos, 30 categorías de error, 5 temas y 40 datos personales.
+- **Estado:** un JSON pequeño **por alumno** (ver abajo), con escritura atómica, máximo 200 turnos, 30 categorías de error, 5 temas y 40 entradas entre datos personales y mnemónicos.
 - **Este proceso:** ~10 MB de RSS medido contra servidores simulados; `debug.SetMemoryLimit` configurable.
 
 ### Presupuesto estimado (no medido) en 16 GB con Ollama local
@@ -360,23 +360,26 @@ Cada turno son dos peticiones (respuesta y corrección) y de vez en cuando una t
 ## Estructura
 
 ```
-cmd/speakeasy/       CLI: arranque, comandos, bucle
+cmd/speakeasy/       CLI: arranque, comandos, bucle, grabación de un turno
 internal/config/     flags, entorno y proveedores
 internal/learner/    quién practica y dónde vive su estado (un archivo por nombre)
 internal/llm/        interfaz neutral de chat (Request, Stats, Chatter)
 internal/openai/     cliente de chat/completions con SSE (Groq, xAI, ...)
 internal/ollama/     cliente de Ollama: chat, voz, ps/unload/load
-internal/conv/       memoria: perfil, resumen, ventana de turnos, JSON en disco
-internal/tutor/      un turno: prompt, streaming, resumen rodante, correcciones
+internal/conv/       memoria: perfil, nivel MCER, hechos, mnemónicos, persona, JSON
+internal/tutor/      un turno: prompt, streaming, resumen rodante, revisión, mnemónicos
+internal/voice/      micrófono: ffmpeg (avfoundation) -> PCM -> WAV -> transcripción
 internal/selftest/   comprobaciones de `--selftest` contra los servicios reales
 internal/speech/     frases -> síntesis -> reproducción (afplay en macOS)
+personas/            tutores de ejemplo (slang americano + su tono de corrección)
+odd/tasks/           planes de los hitos grandes, con su bitácora
 ```
 
-`go test -race ./...` cubre todo salvo el bucle interactivo de `run` y la reproducción real por `afplay`. Incluye `cmd/speakeasy`: `prepare`, los comandos y `/status` se prueban contra un Ollama simulado.
+`go test -race ./...` cubre todo salvo lo que necesita hardware o servicios reales: el bucle interactivo de `run`, la reproducción por `afplay`, el micrófono y `whisper-cli`. Lo demás —`prepare`, los comandos, `/status`, la grabación y la transcripción— se prueba contra un Ollama simulado, un `ffmpeg`/`whisper-cli` falsos y un endpoint de transcripción de mentira.
 
-## Próximo: hito 3, entrada por voz
+## Después
 
-Push-to-talk (mantener una tecla, grabar, transcribir, enviar), sin VAD ni interrupción por voz al principio. Groq también ofrece transcripción por API (Whisper), que podría servir como STT de pruebas; la alternativa local es whisper.cpp o algo basado en MLX.
+Lo que quedó afuera del hito 3, en orden de utilidad: elegir el dispositivo de audio desde la app (`--stt-device` ya existe, pero hay que saber el índice), cortar la grabación por silencio (VAD) en vez de esperar el segundo Enter, y una vista de progreso como la de lingua-loop (`/progress` con estadísticas de la semana).
 
 ## Sin verificar
 

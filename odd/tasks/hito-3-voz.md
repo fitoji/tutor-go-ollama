@@ -30,3 +30,7 @@ Branch: `main`. Delivery: work-unit commits. Runner: `go test -race ./...`.
 **L2** — Decisiones: trigger por Enter vacío (no modo raw); STT con Groq primero; recorder y transcriber como interfaces para sumar whisper.cpp después. Verificado en la máquina: `ffmpeg 9.0.2` con `avfoundation`; no hay `sox`, `whisper-cli` ni modelos whisper locales.
 
 **L3** — Implementado con Enter vacío + Groq (`whisper-large-v3-turbo`). Paquete `internal/voice` (recorder ffmpeg/avfoundation, transcriber compatible OpenAI, WAV 16 kHz, detección de silencio), flags `--stt*`, `recordTurn` testeado con grabador y transcriptor falsos. Verificado sin micrófono: `--stt off` inerte, aviso cuando falta la clave, header `mic=off` en ese caso. Pendiente: una sesión hablada real.
+
+**Cierre** — Hito 3 completo: grabación con Enter vacío, transcripción por Groq y offline con whisper.cpp, silencio filtrado antes de gastar un request, errores de micrófono traducidos. Verificado con 191 tests y con el binario y el modelo reales; falta solo una sesión hablada con micrófono físico.
+
+**Después del hito** — El mismo trabajo dejó dos piezas reutilizables: la persona editable (`--persona`, `--review-persona`, `/persona`) y el largo de respuesta por nivel. No son parte del hito 3, pero comparten el mismo prompt.
