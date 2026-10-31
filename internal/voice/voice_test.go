@@ -184,7 +184,7 @@ func TestCopyUntilSilenceStopsAfterSpeech(t *testing.T) {
 
 	var out bytes.Buffer
 	start := time.Now()
-	copyUntilSilence(src, &out, 300*time.Millisecond)
+	copyUntilSilence(src, &out, 300*time.Millisecond, nil)
 	if d := time.Since(start); d > 2*time.Second {
 		t.Errorf("the VAD should stop reading, took %v", d)
 	}
@@ -202,7 +202,7 @@ func TestCopyUntilSilenceStopsAfterSpeech(t *testing.T) {
 func TestCopyUntilSilenceWithoutVADReadsEverything(t *testing.T) {
 	pcm := pcmOf(SampleRate/2, 6000)
 	var out bytes.Buffer
-	copyUntilSilence(bytes.NewReader(pcm), &out, 0)
+	copyUntilSilence(bytes.NewReader(pcm), &out, 0, nil)
 	if out.Len() != len(pcm) {
 		t.Errorf("read %d of %d bytes", out.Len(), len(pcm))
 	}

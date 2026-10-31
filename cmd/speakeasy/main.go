@@ -29,6 +29,7 @@ import (
 	"speakeasy/internal/selftest"
 	"speakeasy/internal/speech"
 	"speakeasy/internal/tutor"
+	"speakeasy/internal/ui"
 	"speakeasy/internal/voice"
 )
 
@@ -47,6 +48,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// Colour only on a terminal: pipes, logs and tests get plain text.
+	sty := ui.New(isTerminal(os.Stdout))
+
 	// Keep this process small: it is only an orchestrator.
 	debug.SetMemoryLimit(int64(cfg.MemLimitMiB) << 20)
 	debug.SetGCPercent(50)
@@ -93,7 +97,7 @@ func run() error {
 	}
 	cfg.User, cfg.StatePath = name, statePath
 
-	if err := prepare(ctx, cl, cfg); err != nil {
+	if err := prepare(ctx, cl, cfg, sty); err != nil {
 		return err
 	}
 
@@ -154,7 +158,7 @@ func run() error {
 		}
 	}()
 
-	fmt.Printf("speakeasy · %s · %s: %s · voz=%s · mic=%s · ctx=%d · /help para ver comandos\n", cfg.User, cfg.Provider, cfg.LLM, ttsLabel(cfg, spk), micLabel(cfg, vs), cfg.NumCtx)
+	fmt.Println(sty.Dim(fmt.Sprintf("speakeasy · %s · %s: %s · voz=%s · mic=%s · ctx=%d · /help para ver comandos", cfg.User, cfg.Provider, cfg.LLM, ttsLabel(cfg, spk), micLabel(cfg, vs), cfg.NumCtx)))
 	if cfg.Remote() {
 		fmt.Printf("aviso: tus mensajes se envían a %s\n", hostOf(cfg.APIBase))
 	}
@@ -178,7 +182,7 @@ func run() error {
 			u = spk.Begin()
 			v = u
 		}
-		fmt.Print("\ntutor> ")
+		fmt.Print("\n" + sty.Amber("tutor> "))
 		_, err := tut.Reply(turnCtx, line, os.Stdout, v)
 		fmt.Println()
 		if err != nil {
@@ -186,7 +190,7 @@ func run() error {
 				u.Cancel()
 			}
 			if errors.Is(err, context.Canceled) {
-				fmt.Println("(interrumpido)")
+				fmt.Println(sty.Dim("(interrumpido)"))
 			} else {
 				fmt.Fprintln(os.Stderr, "error:", err)
 			}
@@ -197,30 +201,32 @@ func run() error {
 		}
 		// The review pass runs every turn: it carries the corrections and the
 		// facts the tutor remembers, so --corrections only hides the ✎ lines.
+		spin := ui.Start(os.Stdout, sty.Enabled(), "corrigiendo…")
 		rev, err := tut.Correct(turnCtx, line)
+		spin.Stop()
 		if err != nil && !errors.Is(err, context.Canceled) {
 			fmt.Fprintln(os.Stderr, "[correcciones]", err)
 		}
 		for _, f := range rev.Facts {
-			fmt.Printf("  ✚ recordado: %s\n", f)
+			fmt.Println(sty.Dim(fmt.Sprintf("  ✚ recordado: %s", f)))
 		}
 		if cfg.Corrections {
 			for _, c := range rev.Corrections {
-				fmt.Printf("  ✎ %q → %q  (%s)\n", c.Original, c.Better, c.Note)
+				fmt.Println(sty.Amber(fmt.Sprintf("  ✎ %q → %q  (%s)", c.Original, c.Better, c.Note)))
 				if c.Mnemonic != "" {
-					fmt.Printf("  ✧ %s\n", c.Mnemonic)
+					fmt.Println(sty.Magenta(fmt.Sprintf("  ✧ %s", c.Mnemonic)))
 				}
 			}
 			// From C1 up the review also rewrites the whole message.
 			if rev.Rewrite != "" {
-				fmt.Printf("  ↻ %s\n", rev.Rewrite)
+				fmt.Println(sty.Green(fmt.Sprintf("  ↻ %s", rev.Rewrite)))
 			}
 		}
 		tut.FoldAsync(ctx, func(err error) { fmt.Fprintln(os.Stderr, "\n[memoria]", err) })
 	}
 
 	for {
-		fmt.Print("\ntú> ")
+		fmt.Print("\n" + sty.Cyan("tú> "))
 		if !sc.Scan() {
 			break
 		}
@@ -230,7 +236,7 @@ func run() error {
 			if rec == nil || tr == nil {
 				continue
 			}
-			if err := recordTurn(ctx, sc, rec, tr, cfg.STTLang, cfg.RecordMax, os.Stdout, runTurn); err != nil {
+			if err := recordTurn(ctx, sc, rec, tr, cfg.STTLang, cfg.RecordMax, os.Stdout, runTurn, sty); err != nil {
 				fmt.Fprintln(os.Stderr, "error:", err)
 			}
 			continue
@@ -469,6 +475,38 @@ func resolvePersona(dir, arg string) (voice, review string, err error) {
 	return base, review, nil
 }
 
+// startMeter redraws the recording line with a level bar while capturing, so a
+// dead microphone shows before a transcription fails. It returns a stop
+// function; without a level meter, or off a terminal, it does nothing.
+func startMeter(out io.Writer, rec voice.Recorder, on bool) func() {
+	m, ok := rec.(interface{ Level() float64 })
+	if !on || !ok {
+		return func() {}
+	}
+	stop, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		t := time.NewTicker(100 * time.Millisecond)
+		defer t.Stop()
+		start := time.Now()
+		for {
+			select {
+			case <-stop:
+				fmt.Fprint(out, "\r\x1b[K")
+				return
+			case <-t.C:
+				bars := int(m.Level() * 60)
+				if bars > 20 {
+					bars = 20
+				}
+				fmt.Fprintf(out, "\r🎙  grabando… [%s%s] %.1fs",
+					strings.Repeat("█", bars), strings.Repeat("░", 20-bars), time.Since(start).Seconds())
+			}
+		}
+	}()
+	return func() { close(stop); <-done }
+}
+
 // micLabel names the transcription backend, or off.
 func micLabel(cfg config.Config, vs voiceSetup) string {
 	if vs.Rec == nil {
@@ -483,8 +521,9 @@ func micLabel(cfg config.Config, vs voiceSetup) string {
 // recordTurn records one utterance, transcribes it and hands the text to run.
 // It is split out of the loop so a test can drive it with fake recorder and
 // transcriber, without a microphone or a network.
-func recordTurn(ctx context.Context, sc *bufio.Scanner, rec voice.Recorder, tr voice.Transcriber, lang string, max time.Duration, out io.Writer, run func(string)) error {
+func recordTurn(ctx context.Context, sc *bufio.Scanner, rec voice.Recorder, tr voice.Transcriber, lang string, max time.Duration, out io.Writer, run func(string), sty ui.Style) error {
 	fmt.Fprint(out, "🎙  grabando… (Enter para cortar)")
+	stopMeter := startMeter(out, rec, sty.Enabled())
 	rctx, cancel := context.WithCancel(ctx)
 	type captured struct {
 		pcm []byte
@@ -497,6 +536,7 @@ func recordTurn(ctx context.Context, sc *bufio.Scanner, rec voice.Recorder, tr v
 	}()
 	sc.Scan() // the second Enter, or EOF
 	cancel()
+	stopMeter()
 	fmt.Fprintln(out)
 
 	// The recorder is supposed to honour the cancel; this bound is the safety
@@ -511,19 +551,21 @@ func recordTurn(ctx context.Context, sc *bufio.Scanner, rec voice.Recorder, tr v
 		return got.err
 	}
 	if voice.Silent(got.pcm) {
-		fmt.Fprintln(out, "no entendí nada (silencio)")
+		fmt.Fprintln(out, sty.Dim("no entendí nada (silencio)"))
 		return nil
 	}
+	spin := ui.Start(out, sty.Enabled(), "transcribiendo…")
 	text, err := tr.Transcribe(ctx, got.pcm, lang)
+	spin.Stop()
 	if err != nil {
 		return err
 	}
 	text = strings.TrimSpace(text)
 	if text == "" {
-		fmt.Fprintln(out, "no entendí nada")
+		fmt.Fprintln(out, sty.Dim("no entendí nada"))
 		return nil
 	}
-	fmt.Fprintf(out, "tú (voz)> %s\n", text)
+	fmt.Fprintf(out, "%s %s\n", sty.Cyan("tú (voz)>"), text)
 	run(text)
 	return nil
 }
@@ -538,7 +580,7 @@ func hostOf(base string) string {
 // prepare checks Ollama, frees memory held by models that are not ours and,
 // for a local chat model, loads it once before the first message. With a
 // remote provider and no voice, Ollama is not needed at all.
-func prepare(ctx context.Context, cl *ollama.Client, cfg config.Config) error {
+func prepare(ctx context.Context, cl *ollama.Client, cfg config.Config, sty ui.Style) error {
 	if cfg.Remote() && cfg.Mute {
 		return nil
 	}
@@ -587,10 +629,17 @@ func prepare(ctx context.Context, cl *ollama.Client, cfg config.Config) error {
 	if cfg.Remote() {
 		return nil
 	}
-	fmt.Printf("cargando %s...\n", cfg.LLM)
 	lctx, lcancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer lcancel()
-	return cl.Load(lctx, cfg.LLM, cfg.KeepAlive, map[string]any{"num_ctx": cfg.NumCtx})
+	// Off a terminal there is nothing to animate: print the line so logs and
+	// pipes still say what is happening.
+	if !sty.Enabled() {
+		fmt.Printf("cargando %s...\n", cfg.LLM)
+	}
+	spin := ui.Start(os.Stdout, sty.Enabled(), "cargando "+cfg.LLM)
+	err = cl.Load(lctx, cfg.LLM, cfg.KeepAlive, map[string]any{"num_ctx": cfg.NumCtx})
+	spin.Stop()
+	return err
 }
 
 func ours(name string, need []string) bool {

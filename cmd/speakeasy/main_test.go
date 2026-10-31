@@ -22,6 +22,7 @@ import (
 	"speakeasy/internal/openai"
 	"speakeasy/internal/speech"
 	"speakeasy/internal/tutor"
+	"speakeasy/internal/ui"
 	"speakeasy/internal/voice"
 )
 
@@ -136,7 +137,7 @@ func TestPrepareSkipsOllamaWithoutVoiceOnARemoteProvider(t *testing.T) {
 	defer srv.Close()
 	cfg := config.Config{Provider: "groq", LLM: "m", Mute: true, Host: srv.URL}
 
-	if err := prepare(context.Background(), ollama.New(srv.URL), cfg); err != nil {
+	if err := prepare(context.Background(), ollama.New(srv.URL), cfg, ui.New(false)); err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
 }
@@ -147,7 +148,7 @@ func TestPrepareExplainsHowToStartOllama(t *testing.T) {
 	srv.Close() // nothing listens on this port any more
 
 	cfg := config.Config{Provider: "groq", LLM: "m", TTS: "phonon", Host: url}
-	err := prepare(context.Background(), ollama.New(url), cfg)
+	err := prepare(context.Background(), ollama.New(url), cfg, ui.New(false))
 	if err == nil {
 		t.Fatal("expected an error when Ollama is down")
 	}
@@ -164,7 +165,7 @@ func TestPrepareReportsAMissingModel(t *testing.T) {
 	srv := f.server(t)
 
 	cfg := localConfig(srv.URL)
-	err := prepare(context.Background(), ollama.New(srv.URL), cfg)
+	err := prepare(context.Background(), ollama.New(srv.URL), cfg, ui.New(false))
 	if err == nil {
 		t.Fatal("expected an error for a missing chat model")
 	}
@@ -187,7 +188,7 @@ func TestPrepareFreesForeignModelsAndLoadsOurs(t *testing.T) {
 
 	var err error
 	out, _ := capture(t, func() {
-		err = prepare(context.Background(), ollama.New(srv.URL), cfg)
+		err = prepare(context.Background(), ollama.New(srv.URL), cfg, ui.New(false))
 	})
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
@@ -220,7 +221,7 @@ func TestPrepareWarnsButContinuesOnAnOldOllama(t *testing.T) {
 
 	var err error
 	_, errOut := capture(t, func() {
-		err = prepare(context.Background(), ollama.New(srv.URL), cfg)
+		err = prepare(context.Background(), ollama.New(srv.URL), cfg, ui.New(false))
 	})
 	if err != nil {
 		t.Fatalf("an old Ollama must not fail a text-only start: %v", err)
@@ -830,7 +831,7 @@ func TestRecordTurnSendsTheTranscript(t *testing.T) {
 	var out strings.Builder
 	var got string
 
-	err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", 30*time.Second, &out, func(s string) { got = s })
+	err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", 30*time.Second, &out, func(s string) { got = s }, ui.New(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -853,7 +854,7 @@ func TestRecordTurnIgnoresSilence(t *testing.T) {
 	var out strings.Builder
 	called := false
 
-	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", time.Second, &out, func(string) { called = true }); err != nil {
+	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", time.Second, &out, func(string) { called = true }, ui.New(false)); err != nil {
 		t.Fatal(err)
 	}
 	if called {
@@ -870,13 +871,13 @@ func TestRecordTurnIgnoresSilence(t *testing.T) {
 func TestRecordTurnReportsErrors(t *testing.T) {
 	var out strings.Builder
 	rec := &fakeRecorder{err: errors.New("mic roto")}
-	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, &fakeTranscriber{}, "en", time.Second, &out, func(string) {}); err == nil || !strings.Contains(err.Error(), "mic roto") {
+	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, &fakeTranscriber{}, "en", time.Second, &out, func(string) {}, ui.New(false)); err == nil || !strings.Contains(err.Error(), "mic roto") {
 		t.Errorf("recorder error lost: %v", err)
 	}
 
 	rec = &fakeRecorder{pcm: loudPCM()}
 	tr := &fakeTranscriber{err: errors.New("sin clave")}
-	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", time.Second, &out, func(string) {}); err == nil || !strings.Contains(err.Error(), "sin clave") {
+	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", time.Second, &out, func(string) {}, ui.New(false)); err == nil || !strings.Contains(err.Error(), "sin clave") {
 		t.Errorf("transcriber error lost: %v", err)
 	}
 }
@@ -888,7 +889,7 @@ func TestRecordTurnCancelsTheRecorderOnEnter(t *testing.T) {
 	var out strings.Builder
 	done := make(chan error, 1)
 	go func() {
-		done <- recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, &fakeTranscriber{text: "hola"}, "en", time.Hour, &out, func(string) {})
+		done <- recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, &fakeTranscriber{text: "hola"}, "en", time.Hour, &out, func(string) {}, ui.New(false))
 	}()
 	select {
 	case err := <-done:
@@ -1182,5 +1183,40 @@ func TestCommandProgress(t *testing.T) {
 	})
 	if !strings.Contains(out, "turnos: 0") || !strings.Contains(out, "ninguno todavía") {
 		t.Errorf("empty: %q", out)
+	}
+}
+
+// meterRecorder is a recorder that reports a level, like the ffmpeg one.
+type meterRecorder struct{ level float64 }
+
+func (m meterRecorder) Record(ctx context.Context, max time.Duration) ([]byte, error) {
+	return nil, nil
+}
+func (m meterRecorder) Level() float64 { return m.level }
+
+// TestStartMeterDrawsTheLevel is the recording feedback: a dead microphone must
+// show as a bar that does not move.
+func TestStartMeterDrawsTheLevel(t *testing.T) {
+	var out strings.Builder
+	stop := startMeter(&out, meterRecorder{level: 0.3}, true)
+	time.Sleep(150 * time.Millisecond)
+	stop()
+	got := out.String()
+	if !strings.Contains(got, "grabando") || !strings.Contains(got, "█") {
+		t.Errorf("meter output = %q", got)
+	}
+	// Off a terminal it draws nothing.
+	var plain strings.Builder
+	stop = startMeter(&plain, meterRecorder{level: 0.3}, false)
+	stop()
+	if plain.Len() != 0 {
+		t.Errorf("disabled meter wrote %q", plain.String())
+	}
+	// A recorder without a level has nothing to draw.
+	var none strings.Builder
+	stop = startMeter(&none, &fakeRecorder{}, true)
+	stop()
+	if none.Len() != 0 {
+		t.Errorf("a recorder without Level wrote %q", none.String())
 	}
 }

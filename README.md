@@ -185,6 +185,7 @@ Necesita tres cosas: `ffmpeg` (`brew install ffmpeg`), la clave `GROQ_API_KEY` (
 Detalles que importan:
 
 - **El audio sale de tu máquina**: se sube al endpoint configurado, igual que el chat. Si no querés eso, `--stt off` y seguís escribiendo.
+- **Mientras grabás ves un medidor**: una barra con el nivel del micrófono. Si no se mueve mientras hablás, el problema es el micrófono, no la transcripción.
 - **Corta solo al callarte**: tras `--vad` ms de silencio (800 por defecto) y **después** de haberte escuchado, así no corta antes de que empieces. Es VAD por energía en Go (RMS), sin modelos ni Python; el segundo Enter sigue funcionando. Si no hablás, dice `no entendí nada` en vez de mandarle ruido al tutor.
 - **Si pensás mucho, apagalo**: `/vad 0` en plena sesión (o `--vad 0` al arrancar) y solo corta el Enter. `/vad 2000` da dos segundos de margen; `/vad` sin argumento muestra el valor actual.
 - **Groq factura mínimo 10 s por request**, así que una frase de 3 s cuesta lo mismo que una de 10 (~$0.0001 con `turbo`).

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -28,7 +29,14 @@ type FFmpegRecorder struct {
 	mu    sync.Mutex
 	vad   time.Duration
 	isSet bool
+
+	level atomic.Int64 // last block RMS x1000, for the recording meter
 }
+
+// Level is the loudness of the last captured block, 0..1. It is what the
+// recording meter draws: seeing the bar move proves the microphone is heard
+// before a transcription can fail.
+func (r *FFmpegRecorder) Level() float64 { return float64(r.level.Load()) / 1000 }
 
 // SetVAD changes the silence hold for the next recording. Zero means only the
 // Enter stops the capture.
@@ -106,7 +114,9 @@ func (r *FFmpegRecorder) Record(ctx context.Context, max time.Duration) ([]byte,
 	readDone := make(chan struct{})
 	go func() {
 		defer close(readDone)
-		copyUntilSilence(stdout, &out, r.CurrentVAD())
+		copyUntilSilence(stdout, &out, r.CurrentVAD(), func(v float64) {
+			r.level.Store(int64(v * 1000))
+		})
 	}()
 	done := make(chan struct{})
 	go func() { _ = cmd.Wait(); close(done) }()
@@ -160,10 +170,24 @@ func micError(stderr string) error {
 // copyUntilSilence reads the capture in small blocks and stops writing after
 // hold of silence, but only once something louder than room noise was heard:
 // without that guard it would cut before the learner starts talking.
-func copyUntilSilence(stdout io.Reader, out *bytes.Buffer, hold time.Duration) {
+func copyUntilSilence(stdout io.Reader, out *bytes.Buffer, hold time.Duration, onBlock func(float64)) {
+	report := func(b []byte) {
+		if onBlock != nil {
+			onBlock(rms(b))
+		}
+	}
 	if hold <= 0 {
-		_, _ = io.Copy(out, stdout)
-		return
+		buf := make([]byte, vadBlock)
+		for {
+			n, err := stdout.Read(buf)
+			if n > 0 {
+				out.Write(buf[:n])
+				report(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
 	}
 	needSilentBytes := int(hold.Seconds() * SampleRate * 2)
 	buf := make([]byte, vadBlock)
@@ -172,6 +196,7 @@ func copyUntilSilence(stdout io.Reader, out *bytes.Buffer, hold time.Duration) {
 		n, err := stdout.Read(buf)
 		if n > 0 {
 			out.Write(buf[:n])
+			report(buf[:n])
 			if loud(buf[:n]) {
 				spoken, silent = true, 0
 			} else if spoken {
