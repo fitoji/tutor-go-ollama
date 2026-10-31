@@ -50,6 +50,7 @@ func run() error {
 	}
 	// Colour only on a terminal: pipes, logs and tests get plain text.
 	sty := ui.New(isTerminal(os.Stdout))
+	app := &appState{sty: sty}
 	// A chat deserves a clean screen, but only on a terminal, never for a
 	// --selftest a script may be reading, and never against --no-clear.
 	if sty.Enabled() && !cfg.SelfTest && !cfg.NoClear {
@@ -91,6 +92,10 @@ func run() error {
 	reviewPersona, rerr := conv.LoadPersona(cfg.ReviewPersona)
 	if rerr != nil {
 		fmt.Fprintf(os.Stderr, "aviso: no pude leer la persona de correcciones %s: %v\n", cfg.ReviewPersona, rerr)
+	}
+	app.ps = personas{
+		voice:  personaName(cfg.Persona, persona),
+		review: personaName(cfg.ReviewPersona, reviewPersona),
 	}
 	st := settingsFor(cfg, persona, reviewPersona)
 
@@ -265,7 +270,7 @@ func run() error {
 			finish()
 			return nil
 		case strings.HasPrefix(line, "/"):
-			command(ctx, line, cl, cfg, store, tut, spk, rec)
+			command(ctx, line, cl, cfg, store, tut, spk, rec, app)
 		default:
 			runTurn(line)
 		}
@@ -736,7 +741,7 @@ func ours(name string, need []string) bool {
 
 func gib(b int64) float64 { return float64(b) / (1 << 30) }
 
-func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Config, store *conv.Store, tut *tutor.Tutor, spk *speech.Speaker, rec voice.Recorder) {
+func command(ctx context.Context, line string, cl *ollama.Client, cfg config.Config, store *conv.Store, tut *tutor.Tutor, spk *speech.Speaker, rec voice.Recorder, app *appState) {
 	fields := strings.Fields(line)
 	arg := strings.TrimSpace(strings.TrimPrefix(line, fields[0]))
 	switch fields[0] {
@@ -868,6 +873,9 @@ Enter vacío   hablar en vez de escribir (graba hasta el próximo Enter)`)
 			return
 		}
 		tut.SetPersonas(voice, review)
+		if app != nil {
+			app.ps.voice, app.ps.review = personaName(voicePath, voice), personaName(reviewPath, review)
+		}
 		fmt.Printf("voz: %s · correcciones: %s\n", personaLabel(voice), personaLabel(review))
 	case "/voice":
 		if spk == nil {
@@ -894,17 +902,46 @@ Enter vacío   hablar en vez de escribir (graba hasta el próximo Enter)`)
 			fmt.Printf("voz: %s\n", v)
 		}
 	case "/status":
-		status(ctx, cl, cfg, store, tut)
+		status(ctx, cl, cfg, store, tut, app)
 	default:
 		fmt.Println("comando desconocido; prueba /help")
 	}
 }
 
-func status(ctx context.Context, cl *ollama.Client, cfg config.Config, store *conv.Store, tut *tutor.Tutor) {
-	if cfg.User != "" {
-		fmt.Printf("usuario: %s · %s\n", cfg.User, cfg.StatePath)
+func status(ctx context.Context, cl *ollama.Client, cfg config.Config, store *conv.Store, tut *tutor.Tutor, app *appState) {
+	st := ui.New(false)
+	if app != nil {
+		st = app.sty
 	}
-	fmt.Printf("chat: %s · %s\n", cfg.Provider, cfg.LLM)
+	d := store.View()
+
+	title := func(t string) {
+		fmt.Println()
+		fmt.Println(st.Bold(st.Cyan(t)))
+	}
+	line := func(format string, args ...any) {
+		fmt.Printf("  "+format+"\n", args...)
+	}
+
+	// Quién sos: el perfil es lo que el tutor va a leer en el próximo prompt.
+	title("usuario")
+	if cfg.User != "" {
+		lang := map[string]string{"en": "inglés", "de": "alemán"}[cfg.Target]
+		line("%s · %s · %s", st.Bold(cfg.User), lang, levelLabel(cfg.Target, d.Profile.Level))
+		line("%s", st.Dim(cfg.StatePath))
+	}
+
+	// Qué voz tiene el tutor: sin esto no sabías con quién estabas hablando.
+	title("tutor")
+	voice, review := "de fábrica", "neutras"
+	if app != nil {
+		voice, review = app.ps.voice, app.ps.review
+	}
+	line("voz: %s", st.Amber(voice))
+	line("correcciones: %s", st.Amber(review))
+
+	title("modelo")
+	line("%s · %s · ctx %d", cfg.Provider, cfg.LLM, cfg.NumCtx)
 	if !cfg.Remote() || !cfg.Mute {
 		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
@@ -915,15 +952,12 @@ func status(ctx context.Context, cl *ollama.Client, cfg config.Config, store *co
 				parts = append(parts, fmt.Sprintf("%s %.1f GiB", m.Name, gib(m.Size)))
 				total += m.Size
 			}
-			fmt.Printf("modelos en memoria (Ollama): %s (total %.1f GiB)\n", strings.Join(parts, " · "), gib(total))
+			line("en memoria: %s (total %.1f GiB)", strings.Join(parts, " · "), gib(total))
 		}
 	}
-	d := store.View()
-	nivel := d.Profile.Level
-	if p, ok := conv.LevelOf(cfg.Target, nivel); ok {
-		nivel += " (" + p.Name + ")"
-	}
-	fmt.Printf("conversación: %d turnos, resumen de %d palabras, nivel %s\n", len(d.Turns), len(strings.Fields(d.Summary)), nivel)
+
+	title("memoria")
+	line("%d turnos · resumen de %d palabras", len(d.Turns), len(strings.Fields(d.Summary)))
 	// The three categories below are exactly the ones the next system prompt
 	// will carry, so this line is the reason the tutor behaves differently.
 	if top := d.TopMistakes(3); len(top) > 0 {
@@ -931,9 +965,9 @@ func status(ctx context.Context, cl *ollama.Client, cfg config.Config, store *co
 		for i, k := range top {
 			parts[i] = fmt.Sprintf("%s ×%d", k, d.Profile.Mistakes[k])
 		}
-		fmt.Printf("errores recurrentes: %s\n", strings.Join(parts, " · "))
+		line("errores: %s", strings.Join(parts, " · "))
 	} else {
-		fmt.Println("errores recurrentes: todavía ninguno")
+		line("errores: %s", st.Dim("todavía ninguno"))
 	}
 	// The facts are the other half of the memory: what the tutor knows about
 	// the learner as a person, not as a student. Mnemonics live apart because
@@ -947,16 +981,47 @@ func status(ctx context.Context, cl *ollama.Client, cfg config.Config, store *co
 		facts = append(facts, k+"="+d.Profile.Facts[k])
 	}
 	if len(facts) > 0 {
-		fmt.Printf("lo que sabe de vos: %s\n", strings.Join(facts, " · "))
+		line("sabe de vos: %s", strings.Join(facts, " · "))
 	} else {
-		fmt.Println("lo que sabe de vos: todavía nada")
+		line("sabe de vos: %s", st.Dim("todavía nada"))
 	}
 	if len(mnemonics) > 0 {
-		fmt.Printf("mnemónicos: %s\n", strings.Join(mnemonics, " · "))
+		line("mnemónicos: %s", strings.Join(mnemonics, " · "))
 	}
 	if n := tut.LastPromptTokens(); n > 0 {
-		fmt.Printf("último prompt: %d de %d tokens\n", n, cfg.NumCtx)
+		line("último prompt: %d de %d tokens", n, cfg.NumCtx)
 	} else {
-		fmt.Printf("último prompt: tamaño no informado (presupuesto %d tokens)\n", cfg.NumCtx)
+		line("último prompt: %s (presupuesto %d tokens)", st.Dim("tamaño no informado"), cfg.NumCtx)
 	}
+	fmt.Println()
+}
+
+// levelLabel names the level in words when the target has a profile.
+func levelLabel(target, level string) string {
+	if p, ok := conv.LevelOf(target, level); ok {
+		return level + " (" + p.Name + ")"
+	}
+	return level
+}
+
+// personaName is the short name /status shows: the file without its extension,
+// or "de fábrica" when no file is in use.
+func personaName(path, text string) string {
+	if strings.TrimSpace(text) == "" {
+		return "de fábrica"
+	}
+	name := filepath.Base(path)
+	return strings.TrimSuffix(name, ".md")
+}
+
+// appState is what the commands need to render: the terminal style and the
+// personas in use. The text lives in the tutor; this only keeps the names.
+type appState struct {
+	sty ui.Style
+	ps  personas
+}
+
+type personas struct {
+	voice  string
+	review string
 }

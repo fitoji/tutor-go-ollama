@@ -257,7 +257,7 @@ func TestCommandResetKeepsTheProfile(t *testing.T) {
 	cfg := statusConfig()
 
 	out, _ := capture(t, func() {
-		command(context.Background(), "/reset", ollama.New("http://127.0.0.1:1"), cfg, store, tut, nil, nil)
+		command(context.Background(), "/reset", ollama.New("http://127.0.0.1:1"), cfg, store, tut, nil, nil, testApp())
 	})
 	if !strings.Contains(out, "conversación reiniciada") {
 		t.Errorf("unexpected output: %q", out)
@@ -287,7 +287,7 @@ func TestCommandLevel(t *testing.T) {
 		cfg := statusConfig()
 
 		out, _ := capture(t, func() {
-			command(context.Background(), "/level "+c.arg, ollama.New("http://127.0.0.1:1"), cfg, store, tut, nil, nil)
+			command(context.Background(), "/level "+c.arg, ollama.New("http://127.0.0.1:1"), cfg, store, tut, nil, nil, testApp())
 		})
 		if !strings.Contains(out, c.out) {
 			t.Errorf("/level %q output %q, want %q", c.arg, out, c.out)
@@ -304,17 +304,17 @@ func TestCommandTopic(t *testing.T) {
 	cfg := statusConfig()
 	cl := ollama.New("http://127.0.0.1:1")
 
-	out, _ := capture(t, func() { command(context.Background(), "/topic cine", cl, cfg, store, tut, nil, nil) })
+	out, _ := capture(t, func() { command(context.Background(), "/topic cine", cl, cfg, store, tut, nil, nil, testApp()) })
 	if !strings.Contains(out, "tema añadido") {
 		t.Errorf("unexpected output: %q", out)
 	}
 	// The same topic twice, with different case, is stored once.
-	capture(t, func() { command(context.Background(), "/topic Cine", cl, cfg, store, tut, nil, nil) })
+	capture(t, func() { command(context.Background(), "/topic Cine", cl, cfg, store, tut, nil, nil, testApp()) })
 	if got := store.View().Profile.Topics; len(got) != 1 || got[0] != "cine" {
 		t.Errorf("topics = %v", got)
 	}
 	// No argument explains the usage instead of silently doing nothing.
-	out, _ = capture(t, func() { command(context.Background(), "/topic", cl, cfg, store, tut, nil, nil) })
+	out, _ = capture(t, func() { command(context.Background(), "/topic", cl, cfg, store, tut, nil, nil, testApp()) })
 	if !strings.Contains(out, "uso: /topic") {
 		t.Errorf("unexpected output: %q", out)
 	}
@@ -326,13 +326,13 @@ func TestCommandHelpAndUnknown(t *testing.T) {
 	cfg := statusConfig()
 	cl := ollama.New("http://127.0.0.1:1")
 
-	out, _ := capture(t, func() { command(context.Background(), "/help", cl, cfg, store, tut, nil, nil) })
+	out, _ := capture(t, func() { command(context.Background(), "/help", cl, cfg, store, tut, nil, nil, testApp()) })
 	for _, want := range []string{"/reset", "/level", "/topic", "/forget", "/voice", "/status", "/quit"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help should list %q:\n%s", want, out)
 		}
 	}
-	out, _ = capture(t, func() { command(context.Background(), "/nope", cl, cfg, store, tut, nil, nil) })
+	out, _ = capture(t, func() { command(context.Background(), "/nope", cl, cfg, store, tut, nil, nil, testApp()) })
 	if !strings.Contains(out, "comando desconocido") {
 		t.Errorf("unexpected output: %q", out)
 	}
@@ -348,11 +348,12 @@ func TestStatusReportsTheConversationAndTheBudget(t *testing.T) {
 	})
 	tut := tutor.New(nil, store, tutor.Settings{})
 	cfg := statusConfig()
+	cfg.User = "ana"
 
 	out, _ := capture(t, func() {
-		status(context.Background(), ollama.New("http://127.0.0.1:1"), cfg, store, tut)
+		status(context.Background(), ollama.New("http://127.0.0.1:1"), cfg, store, tut, testApp())
 	})
-	for _, want := range []string{"groq", "2 turnos", "4 palabras", "nivel B2", "tamaño no informado", "4096"} {
+	for _, want := range []string{"groq", "2 turnos", "4 palabras", "B2 (upper intermediate)", "tamaño no informado", "4096"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status should mention %q:\n%s", want, out)
 		}
@@ -374,9 +375,9 @@ func TestStatusShowsTheRecurringTroubleSpots(t *testing.T) {
 	cfg := statusConfig()
 
 	out, _ := capture(t, func() {
-		status(context.Background(), ollama.New("http://127.0.0.1:1"), cfg, store, tut)
+		status(context.Background(), ollama.New("http://127.0.0.1:1"), cfg, store, tut, testApp())
 	})
-	for _, want := range []string{"errores recurrentes", "past simple ×4", "articles ×2", "word order ×1"} {
+	for _, want := range []string{"errores:", "past simple ×4", "articles ×2", "word order ×1"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status should mention %q:\n%s", want, out)
 		}
@@ -393,9 +394,9 @@ func TestStatusSaysWhenThereAreNoTroubleSpotsYet(t *testing.T) {
 	cfg := statusConfig()
 
 	out, _ := capture(t, func() {
-		status(context.Background(), ollama.New("http://127.0.0.1:1"), cfg, store, tut)
+		status(context.Background(), ollama.New("http://127.0.0.1:1"), cfg, store, tut, testApp())
 	})
-	if !strings.Contains(out, "errores recurrentes: todavía ninguno") {
+	if !strings.Contains(out, "errores: todavía ninguno") {
 		t.Errorf("an empty profile should say so instead of printing nothing:\n%s", out)
 	}
 }
@@ -409,7 +410,7 @@ func TestStatusAsksOllamaWhatIsLoaded(t *testing.T) {
 	cfg.Mute = true
 
 	out, _ := capture(t, func() {
-		status(context.Background(), ollama.New(srv.URL), cfg, store, tut)
+		status(context.Background(), ollama.New(srv.URL), cfg, store, tut, testApp())
 	})
 	if !strings.Contains(out, "llama3:8b") || !strings.Contains(out, "5.0 GiB") {
 		t.Errorf("status should report the loaded models:\n%s", out)
@@ -535,9 +536,9 @@ func TestStatusNamesTheLearnerAndTheirFile(t *testing.T) {
 	cfg.StatePath = "/home/u/.speakeasy/users/ana/state.json"
 
 	out, _ := capture(t, func() {
-		status(context.Background(), ollama.New("http://127.0.0.1:1"), cfg, store, tut)
+		status(context.Background(), ollama.New("http://127.0.0.1:1"), cfg, store, tut, testApp())
 	})
-	for _, want := range []string{"usuario: ana", "/users/ana/state.json"} {
+	for _, want := range []string{"usuario", "ana", "/users/ana/state.json"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status should mention %q:\n%s", want, out)
 		}
@@ -627,18 +628,18 @@ func TestCommandForget(t *testing.T) {
 	cfg := statusConfig()
 	cl := ollama.New("http://127.0.0.1:1")
 
-	out, _ := capture(t, func() { command(context.Background(), "/forget city", cl, cfg, store, tut, nil, nil) })
+	out, _ := capture(t, func() { command(context.Background(), "/forget city", cl, cfg, store, tut, nil, nil, testApp()) })
 	if !strings.Contains(out, "olvidado") {
 		t.Errorf("unexpected output: %q", out)
 	}
 	if _, ok := store.View().Profile.Facts["city"]; ok {
 		t.Error("the fact should be gone")
 	}
-	out, _ = capture(t, func() { command(context.Background(), "/forget city", cl, cfg, store, tut, nil, nil) })
+	out, _ = capture(t, func() { command(context.Background(), "/forget city", cl, cfg, store, tut, nil, nil, testApp()) })
 	if !strings.Contains(out, "no tenía") {
 		t.Errorf("unexpected output: %q", out)
 	}
-	out, _ = capture(t, func() { command(context.Background(), "/forget", cl, cfg, store, tut, nil, nil) })
+	out, _ = capture(t, func() { command(context.Background(), "/forget", cl, cfg, store, tut, nil, nil, testApp()) })
 	if !strings.Contains(out, "uso: /forget") {
 		t.Errorf("unexpected output: %q", out)
 	}
@@ -653,9 +654,9 @@ func TestStatusShowsWhatTheTutorRemembers(t *testing.T) {
 	tut := tutor.New(nil, store, tutor.Settings{})
 
 	out, _ := capture(t, func() {
-		status(context.Background(), ollama.New("http://127.0.0.1:1"), statusConfig(), store, tut)
+		status(context.Background(), ollama.New("http://127.0.0.1:1"), statusConfig(), store, tut, testApp())
 	})
-	for _, want := range []string{"lo que sabe de vos", "name=Fito", "city=Madrid"} {
+	for _, want := range []string{"sabe de vos", "name=Fito", "city=Madrid"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status should mention %q:\n%s", want, out)
 		}
@@ -666,9 +667,9 @@ func TestStatusSaysWhenItKnowsNothingYet(t *testing.T) {
 	store := newStore(t)
 	tut := tutor.New(nil, store, tutor.Settings{})
 	out, _ := capture(t, func() {
-		status(context.Background(), ollama.New("http://127.0.0.1:1"), statusConfig(), store, tut)
+		status(context.Background(), ollama.New("http://127.0.0.1:1"), statusConfig(), store, tut, testApp())
 	})
-	if !strings.Contains(out, "lo que sabe de vos: todavía nada") {
+	if !strings.Contains(out, "sabe de vos: todavía nada") {
 		t.Errorf("an empty profile should say so:\n%s", out)
 	}
 }
@@ -682,12 +683,12 @@ func TestCommandVoice(t *testing.T) {
 	cl := ollama.New("http://127.0.0.1:1")
 	spk := speech.NewSpeaker(nil, nil, "phonon", "Freya", nil)
 
-	out, _ := capture(t, func() { command(context.Background(), "/voice", cl, cfg, store, tut, spk, nil) })
+	out, _ := capture(t, func() { command(context.Background(), "/voice", cl, cfg, store, tut, spk, nil, testApp()) })
 	if !strings.Contains(out, "voz: Freya") {
 		t.Errorf("unexpected output: %q", out)
 	}
 
-	out, _ = capture(t, func() { command(context.Background(), "/voice masculina", cl, cfg, store, tut, spk, nil) })
+	out, _ = capture(t, func() { command(context.Background(), "/voice masculina", cl, cfg, store, tut, spk, nil, testApp()) })
 	if !strings.Contains(out, "voz: Spencer (masculina)") {
 		t.Errorf("unexpected output: %q", out)
 	}
@@ -695,12 +696,12 @@ func TestCommandVoice(t *testing.T) {
 		t.Errorf("speaker voice = %q", got)
 	}
 
-	out, _ = capture(t, func() { command(context.Background(), "/voice Harper", cl, cfg, store, tut, spk, nil) })
+	out, _ = capture(t, func() { command(context.Background(), "/voice Harper", cl, cfg, store, tut, spk, nil, testApp()) })
 	if !strings.Contains(out, "voz: Harper") || spk.Voice() != "Harper" {
 		t.Errorf("an exact name must pass through: %q / %q", out, spk.Voice())
 	}
 
-	out, _ = capture(t, func() { command(context.Background(), "/voice femenina", cl, cfg, store, tut, nil, nil) })
+	out, _ = capture(t, func() { command(context.Background(), "/voice femenina", cl, cfg, store, tut, nil, nil, testApp()) })
 	if !strings.Contains(out, "--mute") {
 		t.Errorf("a muted session should say so: %q", out)
 	}
@@ -1015,12 +1016,12 @@ func TestCommandPersonaSwitchesTheVoice(t *testing.T) {
 	cfg.Persona = filepath.Join(dir, "tutor.md")
 	cl := ollama.New("http://127.0.0.1:1")
 
-	out, _ := capture(t, func() { command(context.Background(), "/persona", cl, cfg, store, tut, nil, nil) })
+	out, _ := capture(t, func() { command(context.Background(), "/persona", cl, cfg, store, tut, nil, nil, testApp()) })
 	if !strings.Contains(out, "de fábrica") || !strings.Contains(out, "disponibles: slang") {
 		t.Errorf("list: %q", out)
 	}
 
-	out, _ = capture(t, func() { command(context.Background(), "/persona slang", cl, cfg, store, tut, nil, nil) })
+	out, _ = capture(t, func() { command(context.Background(), "/persona slang", cl, cfg, store, tut, nil, nil, testApp()) })
 	voice, review := tut.Personas()
 	if !strings.Contains(voice, "Say dude") || !strings.Contains(review, "Roast them") {
 		t.Errorf("switch: %q / %q", voice, review)
@@ -1029,12 +1030,12 @@ func TestCommandPersonaSwitchesTheVoice(t *testing.T) {
 		t.Errorf("output: %q", out)
 	}
 
-	capture(t, func() { command(context.Background(), "/persona off", cl, cfg, store, tut, nil, nil) })
+	capture(t, func() { command(context.Background(), "/persona off", cl, cfg, store, tut, nil, nil, testApp()) })
 	if voice, review := tut.Personas(); voice != "" || review != "" {
 		t.Errorf("off: %q %q", voice, review)
 	}
 
-	out, _ = capture(t, func() { command(context.Background(), "/persona nope", cl, cfg, store, tut, nil, nil) })
+	out, _ = capture(t, func() { command(context.Background(), "/persona nope", cl, cfg, store, tut, nil, nil, testApp()) })
 	if !strings.Contains(out, "no encuentro") {
 		t.Errorf("missing: %q", out)
 	}
@@ -1112,7 +1113,7 @@ func TestCommandVoiceExplainsASingleVoiceModel(t *testing.T) {
 	spk := speech.NewSpeaker(nil, nil, "phonon:de", "", nil)
 
 	out, _ := capture(t, func() {
-		command(context.Background(), "/voice femenina", ollama.New("http://127.0.0.1:1"), cfg, store, tut, spk, nil)
+		command(context.Background(), "/voice femenina", ollama.New("http://127.0.0.1:1"), cfg, store, tut, spk, nil, testApp())
 	})
 	if !strings.Contains(out, "una sola voz") {
 		t.Errorf("output: %q", out)
@@ -1130,24 +1131,24 @@ func TestCommandVAD(t *testing.T) {
 	cl := ollama.New("http://127.0.0.1:1")
 	rec := &voice.FFmpegRecorder{VAD: 800 * time.Millisecond}
 
-	out, _ := capture(t, func() { command(context.Background(), "/vad", cl, cfg, store, tut, nil, rec) })
+	out, _ := capture(t, func() { command(context.Background(), "/vad", cl, cfg, store, tut, nil, rec, testApp()) })
 	if !strings.Contains(out, "800 ms") {
 		t.Errorf("show: %q", out)
 	}
-	out, _ = capture(t, func() { command(context.Background(), "/vad 0", cl, cfg, store, tut, nil, rec) })
+	out, _ = capture(t, func() { command(context.Background(), "/vad 0", cl, cfg, store, tut, nil, rec, testApp()) })
 	if !strings.Contains(out, "off") || rec.CurrentVAD() != 0 {
 		t.Errorf("off: %q / %v", out, rec.CurrentVAD())
 	}
-	out, _ = capture(t, func() { command(context.Background(), "/vad 1500", cl, cfg, store, tut, nil, rec) })
+	out, _ = capture(t, func() { command(context.Background(), "/vad 1500", cl, cfg, store, tut, nil, rec, testApp()) })
 	if !strings.Contains(out, "1500 ms") || rec.CurrentVAD() != 1500*time.Millisecond {
 		t.Errorf("set: %q / %v", out, rec.CurrentVAD())
 	}
-	out, _ = capture(t, func() { command(context.Background(), "/vad nope", cl, cfg, store, tut, nil, rec) })
+	out, _ = capture(t, func() { command(context.Background(), "/vad nope", cl, cfg, store, tut, nil, rec, testApp()) })
 	if !strings.Contains(out, "uso: /vad") {
 		t.Errorf("bad arg: %q", out)
 	}
 	// Without an ffmpeg recorder there is nothing to switch.
-	out, _ = capture(t, func() { command(context.Background(), "/vad 0", cl, cfg, store, tut, nil, nil) })
+	out, _ = capture(t, func() { command(context.Background(), "/vad 0", cl, cfg, store, tut, nil, nil, testApp()) })
 	if !strings.Contains(out, "solo aplica") {
 		t.Errorf("no recorder: %q", out)
 	}
@@ -1168,25 +1169,25 @@ func TestCommandProgress(t *testing.T) {
 	cfg.ProgressSummary = false // no model in this test
 	cl := ollama.New("http://127.0.0.1:1")
 
-	out, _ := capture(t, func() { command(context.Background(), "/progress", cl, cfg, store, tut, nil, nil) })
+	out, _ := capture(t, func() { command(context.Background(), "/progress", cl, cfg, store, tut, nil, nil, testApp()) })
 	for _, want := range []string{"progreso · semana", "1 día activo", "racha 1", "turnos: 2", "past simple ×2", "datos aprendidos: 1"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("progress should contain %q:\n%s", want, out)
 		}
 	}
 
-	out, _ = capture(t, func() { command(context.Background(), "/progress month", cl, cfg, store, tut, nil, nil) })
+	out, _ = capture(t, func() { command(context.Background(), "/progress month", cl, cfg, store, tut, nil, nil, testApp()) })
 	if !strings.Contains(out, "progreso · mes") {
 		t.Errorf("month: %q", out)
 	}
-	out, _ = capture(t, func() { command(context.Background(), "/progress year", cl, cfg, store, tut, nil, nil) })
+	out, _ = capture(t, func() { command(context.Background(), "/progress year", cl, cfg, store, tut, nil, nil, testApp()) })
 	if !strings.Contains(out, "period inválido") {
 		t.Errorf("invalid period: %q", out)
 	}
 	// An empty profile still answers.
 	empty := newStore(t)
 	out, _ = capture(t, func() {
-		command(context.Background(), "/progress", cl, cfg, empty, tutor.New(nil, empty, tutor.Settings{}), nil, nil)
+		command(context.Background(), "/progress", cl, cfg, empty, tutor.New(nil, empty, tutor.Settings{}), nil, nil, testApp())
 	})
 	if !strings.Contains(out, "turnos: 0") || !strings.Contains(out, "ninguno todavía") {
 		t.Errorf("empty: %q", out)
@@ -1274,3 +1275,6 @@ func TestTranscriptionPrompt(t *testing.T) {
 		t.Errorf("german prompt: %q", de)
 	}
 }
+
+// testApp is what the commands get in tests: no colour, no personas.
+func testApp() *appState { return &appState{sty: ui.New(false)} }

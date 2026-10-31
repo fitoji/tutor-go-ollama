@@ -155,9 +155,21 @@ Cada idioma (`--target en|de`) es un **tutor nuevo**: perfil separado, onboardin
 - `/status` muestra el nombre y el archivo en uso, que es la forma rápida de comprobar que no estás pisando el perfil de otro:
 
 ```
-usuario: Ana · /Users/vos/.speakeasy/users/ana/state.json
-chat: groq · llama-3.3-70b-versatile
-conversación: 12 turnos, resumen de 87 palabras, nivel B2
+usuario
+  Ana · inglés · B2 (upper intermediate)
+  /Users/vos/.speakeasy/users/ana/en/state.json
+
+tutor
+  voz: slang-americano
+  correcciones: slang-americano-review
+
+modelo
+  groq · llama-3.3-70b-versatile · ctx 4096
+
+memoria
+  12 turnos · resumen de 87 palabras
+  errores: past simple ×4 · articles ×2
+  sabe de vos: city=Madrid · name=Fito
 ```
 
 ## 💬 Lo que el tutor recuerda de vos
