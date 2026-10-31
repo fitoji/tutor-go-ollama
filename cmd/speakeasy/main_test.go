@@ -832,7 +832,7 @@ func TestRecordTurnSendsTheTranscript(t *testing.T) {
 	var out strings.Builder
 	var got string
 
-	err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", "", 30*time.Second, &out, func(s string) { got = s }, ui.New(false))
+	err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", "", 30*time.Second, &out, func(s string, _ bool) { got = s }, ui.New(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -855,7 +855,7 @@ func TestRecordTurnIgnoresSilence(t *testing.T) {
 	var out strings.Builder
 	called := false
 
-	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", "", time.Second, &out, func(string) { called = true }, ui.New(false)); err != nil {
+	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", "", time.Second, &out, func(string, bool) { called = true }, ui.New(false)); err != nil {
 		t.Fatal(err)
 	}
 	if called {
@@ -872,13 +872,13 @@ func TestRecordTurnIgnoresSilence(t *testing.T) {
 func TestRecordTurnReportsErrors(t *testing.T) {
 	var out strings.Builder
 	rec := &fakeRecorder{err: errors.New("mic roto")}
-	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, &fakeTranscriber{}, "en", "", time.Second, &out, func(string) {}, ui.New(false)); err == nil || !strings.Contains(err.Error(), "mic roto") {
+	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, &fakeTranscriber{}, "en", "", time.Second, &out, func(string, bool) {}, ui.New(false)); err == nil || !strings.Contains(err.Error(), "mic roto") {
 		t.Errorf("recorder error lost: %v", err)
 	}
 
 	rec = &fakeRecorder{pcm: loudPCM()}
 	tr := &fakeTranscriber{err: errors.New("sin clave")}
-	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", "", time.Second, &out, func(string) {}, ui.New(false)); err == nil || !strings.Contains(err.Error(), "sin clave") {
+	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, tr, "en", "", time.Second, &out, func(string, bool) {}, ui.New(false)); err == nil || !strings.Contains(err.Error(), "sin clave") {
 		t.Errorf("transcriber error lost: %v", err)
 	}
 }
@@ -890,7 +890,7 @@ func TestRecordTurnCancelsTheRecorderOnEnter(t *testing.T) {
 	var out strings.Builder
 	done := make(chan error, 1)
 	go func() {
-		done <- recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, &fakeTranscriber{text: "hola"}, "en", "", time.Hour, &out, func(string) {}, ui.New(false))
+		done <- recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), rec, &fakeTranscriber{text: "hola"}, "en", "", time.Hour, &out, func(string, bool) {}, ui.New(false))
 	}()
 	select {
 	case err := <-done:

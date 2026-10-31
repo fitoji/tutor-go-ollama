@@ -57,7 +57,7 @@ func gapLoud(n int) []byte {
 func TestRecordTurnStopsAtEOF(t *testing.T) {
 	rec := &gapRec{pcm: gapLoud(16000)}
 	var got string
-	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("")), rec, &gapTr{text: " at eof "}, "en", "", time.Hour, &strings.Builder{}, func(s string) { got = s }, ui.New(false)); err != nil {
+	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("")), rec, &gapTr{text: " at eof "}, "en", "", time.Hour, &strings.Builder{}, func(s string, _ bool) { got = s }, ui.New(false)); err != nil {
 		t.Fatal(err)
 	}
 	if got != "at eof" || !rec.stopped.Load() {
@@ -69,7 +69,7 @@ func TestRecordTurnSilenceSkipsEverything(t *testing.T) {
 	tr := &gapTr{text: "must not be used"}
 	called := false
 	var out strings.Builder
-	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), &gapRec{pcm: make([]byte, 32000)}, tr, "en", "", time.Second, &out, func(string) { called = true }, ui.New(false)); err != nil {
+	if err := recordTurn(context.Background(), bufio.NewScanner(strings.NewReader("\n")), &gapRec{pcm: make([]byte, 32000)}, tr, "en", "", time.Second, &out, func(string, bool) { called = true }, ui.New(false)); err != nil {
 		t.Fatal(err)
 	}
 	if called || tr.n != 0 || !strings.Contains(out.String(), "no entendí nada") {

@@ -65,3 +65,5 @@ Branch: `main`. Delivery: work-unit commits. Runner: `go test -race ./...`. Esta
 **L16** (usuario, textual): «deja esto para mas adelante», sobre T7.
 
 **L17** — El hito 4 se cierra con T1–T6 hechos y **T7 diferido**: `say` no hace falta para inglés ni alemán (`phonon:de` existe) y solo destraba el italiano o el uso sin Ollama. Se retoma cuando el italiano entre en el horizonte, o como parte del hito que lo agregue. El plan queda como está: cuando se implemente, es un archivo nuevo en `internal/speech` más dos flags.
+
+**L18** — Idea anotada para el futuro: pasar a la revisión la **confianza del STT**. Hoy solo le decimos si el turno vino del micrófono; con un número (Groq `avg_logprob` en `verbose_json`; whisper.cpp puede dar probabilidades por token con `-oj`) la nota podría volverse neutra cuando la transcripción es dudosa, en vez de arriesgar una corrección sobre una palabra que el alumno nunca dijo. No es una línea: hay que normalizar dos backends distintos.

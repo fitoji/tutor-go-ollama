@@ -100,7 +100,7 @@ func TestTutorOverOpenAICompatibleAPI(t *testing.T) {
 		t.Errorf("prompt tokens %+v", res)
 	}
 
-	rev, err := tut.Correct(context.Background(), "I go yesterday to the beach")
+	rev, err := tut.Correct(context.Background(), "I go yesterday to the beach", false)
 	if err != nil || len(rev.Corrections) != 1 || rev.Corrections[0].Better != "I went yesterday" {
 		t.Fatalf("corrections %+v %v", rev.Corrections, err)
 	}

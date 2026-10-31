@@ -77,17 +77,13 @@ func mnemonicKey(category string) string {
 	return conv.NormalizeFactKey(conv.MnemonicPrefix + category)
 }
 
-// repeatedTroubleSpots lists what the learner keeps getting wrong and still has
-// no mnemonic for. A category seen once is not a pattern, and one that already
-// has an image is not asked again.
-func repeatedTroubleSpots(d conv.Data) []troubleSpot {
+// repeatedSpots lists what the learner keeps getting wrong. A category seen
+// once is not a pattern. It is told to the review pass so callbacks are real,
+// not invented.
+func repeatedSpots(d conv.Data) []troubleSpot {
 	var out []troubleSpot
 	for _, k := range d.TopMistakes(6) {
 		if d.Profile.Mistakes[k] < 2 {
-			continue
-		}
-		key := mnemonicKey(k)
-		if key == "" || d.Profile.Facts[key] != "" {
 			continue
 		}
 		out = append(out, troubleSpot{Category: k, Count: d.Profile.Mistakes[k]})
@@ -98,14 +94,31 @@ func repeatedTroubleSpots(d conv.Data) []troubleSpot {
 	return out
 }
 
+// needsMnemonic keeps the recurring spots that still have no image: asking
+// again for one that exists would only produce noise.
+func needsMnemonic(d conv.Data, spots []troubleSpot) []troubleSpot {
+	var out []troubleSpot
+	for _, sp := range spots {
+		key := mnemonicKey(sp.Category)
+		if key == "" || d.Profile.Facts[key] != "" {
+			continue
+		}
+		out = append(out, sp)
+	}
+	return out
+}
+
 // correctionSystem builds the review prompt. The JSON shape is spelled out
 // because OpenAI-compatible providers only offer JSON mode (no schema), and
 // JSON mode requires the word "JSON".
-func correctionSystem(level string, p correctionPolicy, notesLang string, spots []troubleSpot, reviewPersona, target string) string {
+func correctionSystem(level string, p correctionPolicy, notesLang string, spots, mnemonicSpots []troubleSpot, reviewPersona, target string, fromVoice bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are a %s teacher reviewing ONE message written by a learner at CEFR level %s.\n", conv.LanguageName(target), level)
 	b.WriteString(p.Rules + "\n")
 	b.WriteString("Ignore capitalization, punctuation and obvious typos. If the message is fine, return an empty list.\n")
+	if fromVoice {
+		b.WriteString("The message was transcribed from speech: if a word looks like a mis-hearing (a homophone, a name, a word that makes no sense in context), do not correct it as a language mistake.\n")
+	}
 	if tone := strings.TrimSpace(reviewPersona); tone != "" {
 		fmt.Fprintf(&b, "For each mistake give \"original\" (the exact wrong fragment), \"better\" (the corrected fragment), \"category\" (two or three lowercase English words, e.g. \"past simple\", \"articles\", \"word order\") and \"note\" (at most 16 words, written in %s).\n", notesLang)
 		b.WriteString("Tone for the notes:\n")
@@ -122,8 +135,14 @@ func correctionSystem(level string, p correctionPolicy, notesLang string, spots 
 		for i, sp := range spots {
 			parts[i] = sp.String()
 		}
-		fmt.Fprintf(&b, "The learner keeps getting these wrong: %s.\n", strings.Join(parts, ", "))
-		fmt.Fprintf(&b, "For a correction whose category is one of those, also add \"mnemonic\": a Ramón Campayo memory image in %s — a keyword that sounds like the right form plus one absurd, exaggerated, moving image, at most 20 words. Leave it empty for any other category.\n", notesLang)
+		fmt.Fprintf(&b, "The learner keeps getting these wrong: %s. Only these count as recurring: never invent counts for anything else.\n", strings.Join(parts, ", "))
+	}
+	if len(mnemonicSpots) > 0 {
+		parts := make([]string, len(mnemonicSpots))
+		for i, sp := range mnemonicSpots {
+			parts[i] = sp.Category
+		}
+		fmt.Fprintf(&b, "For a correction in one of these categories that has no mnemonic yet (%s), also add \"mnemonic\": a Ramón Campayo memory image in %s — a keyword that sounds like the right form plus one absurd, exaggerated, moving image, at most 20 words. Leave it empty for any other category.\n", strings.Join(parts, ", "), notesLang)
 	}
 	if p.Rewrite {
 		b.WriteString("Also add \"rewrite\": the whole message as a native speaker would write it, keeping the learner's meaning and detail, in one sentence.\n")
@@ -177,7 +196,7 @@ var correctionSchema = json.RawMessage(`{
 // app can show it. How hard it looks depends on the learner's level. It sends
 // only that message (no history), so it is cheap, and it uses the same model as
 // the conversation, so nothing else is loaded.
-func (t *Tutor) Correct(ctx context.Context, text string) (Review, error) {
+func (t *Tutor) Correct(ctx context.Context, text string, fromVoice bool) (Review, error) {
 	if len(strings.Fields(text)) < 2 {
 		return Review{}, nil
 	}
@@ -186,11 +205,13 @@ func (t *Tutor) Correct(ctx context.Context, text string) (Review, error) {
 		level = t.store.Level()
 	}
 	policy := policyFor(level)
-	var spots []troubleSpot
+	var spots, mnemonicSpots []troubleSpot
 	if t.store != nil {
-		spots = repeatedTroubleSpots(t.store.View())
+		view := t.store.View()
+		spots = repeatedSpots(view)
+		mnemonicSpots = needsMnemonic(view, spots)
 	}
-	raw, err := t.chat(ctx, t.correctionRequest(text, level, policy, spots))
+	raw, err := t.chat(ctx, t.correctionRequest(text, level, policy, spots, mnemonicSpots, fromVoice))
 	if err != nil {
 		return Review{}, err
 	}
@@ -208,7 +229,7 @@ func (t *Tutor) Correct(ctx context.Context, text string) (Review, error) {
 	// A mnemonic is only kept for a trouble spot we asked about, and it is
 	// stored so the next turns can reuse the same image.
 	asked := map[string]bool{}
-	for _, sp := range spots {
+	for _, sp := range mnemonicSpots {
 		asked[strings.ToLower(sp.Category)] = true
 	}
 	var mnemonicFacts []Fact
@@ -279,9 +300,9 @@ func (t *Tutor) review() string {
 // correctionRequest builds the review request for a level and its policy.
 // ProbeCorrections reuses it so that --selftest probes exactly what production
 // sends for a new learner.
-func (t *Tutor) correctionRequest(text, level string, p correctionPolicy, spots []troubleSpot) llm.Request {
+func (t *Tutor) correctionRequest(text, level string, p correctionPolicy, spots, mnemonicSpots []troubleSpot, fromVoice bool) llm.Request {
 	msgs := []llm.Message{
-		{Role: "system", Content: correctionSystem(level, p, t.st.NotesLang, spots, t.review(), t.st.Target)},
+		{Role: "system", Content: correctionSystem(level, p, t.st.NotesLang, spots, mnemonicSpots, t.review(), t.st.Target, fromVoice)},
 		{Role: "user", Content: "Learner message: " + text},
 	}
 	req := t.request(msgs, 0, p.Tokens)
@@ -298,7 +319,7 @@ func ProbeCorrections(ctx context.Context, lm llm.Chatter, st Settings) ([]Corre
 	if st.Target == "de" {
 		sample = ProbeSampleDE
 	}
-	raw, err := t.chat(ctx, t.correctionRequest(sample, "B1", policyFor("B1"), nil))
+	raw, err := t.chat(ctx, t.correctionRequest(sample, "B1", policyFor("B1"), nil, nil, false))
 	if err != nil {
 		return nil, err
 	}

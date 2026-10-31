@@ -146,7 +146,7 @@ func TestReviewRecordsFactsAndStoresThem(t *testing.T) {
 	f := &fakeOllama{json: `{"corrections":[],"facts":[{"key":"name","value":"Fito"},{"key":"city","value":"Madrid"}]}`}
 	tut, store := setup(t, f, 8192)
 
-	rev, err := tut.Correct(context.Background(), "Hi, my name is Fito and I live in Madrid")
+	rev, err := tut.Correct(context.Background(), "Hi, my name is Fito and I live in Madrid", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestReviewRecordsFactsAndStoresThem(t *testing.T) {
 		t.Errorf("stored facts = %v", d.Profile.Facts)
 	}
 	// The same answer twice is not news the second time.
-	again, err := tut.Correct(context.Background(), "Hi, my name is Fito and I live in Madrid")
+	again, err := tut.Correct(context.Background(), "Hi, my name is Fito and I live in Madrid", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestReviewRejectsInventedFacts(t *testing.T) {
 	f := &fakeOllama{json: `{"corrections":[],"facts":[{"key":"key","value":"value"},{"key":"name","value":"your_name"},{"key":"","value":"x"},{"key":"city","value":""}]}`}
 	tut, store := setup(t, f, 8192)
 
-	if rev, err := tut.Correct(context.Background(), "hello there friend"); err != nil || len(rev.Facts) != 0 {
+	if rev, err := tut.Correct(context.Background(), "hello there friend", false); err != nil || len(rev.Facts) != 0 {
 		t.Errorf("facts=%v err=%v, want nothing stored", rev.Facts, err)
 	}
 	if n := len(store.View().Profile.Facts); n != 0 {
@@ -187,7 +187,7 @@ func TestReviewCapturesTheNameWhenTheModelForgets(t *testing.T) {
 	f := &fakeOllama{json: `{"corrections":[],"facts":[]}`}
 	tut, store := setup(t, f, 8192)
 
-	rev, err := tut.Correct(context.Background(), "Hi, my name is Ana")
+	rev, err := tut.Correct(context.Background(), "Hi, my name is Ana", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestReviewCapturesTheNameWhenTheModelForgets(t *testing.T) {
 		t.Errorf("facts = %v", rev.Facts)
 	}
 	// A known name is not overwritten by a later sentence.
-	if _, err := tut.Correct(context.Background(), "my name is Bea"); err != nil {
+	if _, err := tut.Correct(context.Background(), "my name is Bea", false); err != nil {
 		t.Fatal(err)
 	}
 	if got := store.View().Profile.Facts["name"]; got != "Ana" {
@@ -220,7 +220,7 @@ func TestEveryRequestUsesTheSameNumCtx(t *testing.T) {
 	if _, err := tut.Reply(context.Background(), "one more thing here", nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tut.Correct(context.Background(), "one more thing here"); err != nil {
+	if _, err := tut.Correct(context.Background(), "one more thing here", false); err != nil {
 		t.Fatal(err)
 	}
 	tut.FoldAsync(context.Background(), nil)
@@ -305,7 +305,7 @@ func TestCorrect(t *testing.T) {
 		{"original":"c","better":"d","category":"articles","note":"y"},
 		{"original":"e","better":"f","category":"articles","note":"y"}]}`}
 	tut, store := setup(t, f, 8192)
-	rev, err := tut.Correct(context.Background(), "I go yesterday to the beach")
+	rev, err := tut.Correct(context.Background(), "I go yesterday to the beach", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +350,7 @@ func TestCorrectAcceptsABareList(t *testing.T) {
 	for _, c := range cases {
 		f := &fakeOllama{json: c.json}
 		tut, store := setup(t, f, 8192)
-		rev, err := tut.Correct(context.Background(), "I go yesterday to the beach")
+		rev, err := tut.Correct(context.Background(), "I go yesterday to the beach", false)
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
@@ -371,7 +371,7 @@ func TestCorrectRecoversFromUnescapedQuotes(t *testing.T) {
 	f := &fakeOllama{json: `{"corrections":[{"original":"I go","better":"I went","category":"past simple","note":"Usa "otra" forma, no "go"."}]}`}
 	tut, store := setup(t, f, 8192)
 
-	rev, err := tut.Correct(context.Background(), "I go to the cinema yesterday")
+	rev, err := tut.Correct(context.Background(), "I go to the cinema yesterday", false)
 	if err != nil {
 		t.Fatalf("a recoverable answer must not fail: %v", err)
 	}
@@ -397,7 +397,7 @@ func TestCorrectRecoversSeveralBrokenEntries(t *testing.T) {
 		{"original":"a office","better":"an office","category":"articles","note":"Antes de vocal."}]}`}
 	tut, _ := setup(t, f, 8192)
 
-	rev, err := tut.Correct(context.Background(), "I go to a office yesterday")
+	rev, err := tut.Correct(context.Background(), "I go to a office yesterday", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,13 +412,13 @@ func TestCorrectRecoversSeveralBrokenEntries(t *testing.T) {
 func TestCorrectSkipsSingleWordsAndHandlesBadJSON(t *testing.T) {
 	f := &fakeOllama{json: `not json`}
 	tut, _ := setup(t, f, 8192)
-	if rev, err := tut.Correct(context.Background(), "hello"); len(rev.Corrections) != 0 || err != nil {
+	if rev, err := tut.Correct(context.Background(), "hello", false); len(rev.Corrections) != 0 || err != nil {
 		t.Errorf("single word: %v %v", rev.Corrections, err)
 	}
 	if len(f.requests()) != 0 {
 		t.Error("single words must not cost an LLM call")
 	}
-	if _, err := tut.Correct(context.Background(), "hello there friend"); err == nil {
+	if _, err := tut.Correct(context.Background(), "hello there friend", false); err == nil {
 		t.Error("bad JSON must be reported, not ignored")
 	}
 }
@@ -512,7 +512,7 @@ func TestCorrectionStrictnessGrowsWithTheLevel(t *testing.T) {
 		tut, store := setup(t, f, 8192)
 		store.Update(func(d *conv.Data) { d.Profile.Level = c.level })
 
-		if _, err := tut.Correct(context.Background(), "I have went to the cinema yesterday"); err != nil {
+		if _, err := tut.Correct(context.Background(), "I have went to the cinema yesterday", false); err != nil {
 			t.Fatal(err)
 		}
 		msgs := f.requests()[0]["messages"].([]any)
@@ -549,7 +549,7 @@ func TestReviewReturnsTheRewriteOnlyWhenAsked(t *testing.T) {
 		f := &fakeOllama{json: body}
 		tut, store := setup(t, f, 8192)
 		store.Update(func(d *conv.Data) { d.Profile.Level = level })
-		rev, err := tut.Correct(context.Background(), "I have went to the cinema yesterday")
+		rev, err := tut.Correct(context.Background(), "I have went to the cinema yesterday", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -589,7 +589,7 @@ func TestRepeatedCategoriesGetAMnemonic(t *testing.T) {
 		}
 	})
 
-	rev, err := tut.Correct(context.Background(), "I go yesterday to the beach")
+	rev, err := tut.Correct(context.Background(), "I go yesterday to the beach", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -614,7 +614,7 @@ func TestNewCategoriesGetNoMnemonic(t *testing.T) {
 	f := &fakeOllama{json: `{"corrections":[{"original":"I go yesterday","better":"I went yesterday","category":"past simple","note":"Usa pasado.","mnemonic":"Inventado."}],"facts":[]}`}
 	tut, store := setup(t, f, 8192)
 
-	rev, err := tut.Correct(context.Background(), "I go yesterday to the beach")
+	rev, err := tut.Correct(context.Background(), "I go yesterday to the beach", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -642,12 +642,17 @@ func TestMnemonicIsAskedOnlyOnce(t *testing.T) {
 		d.SetFact("mnemonic-past-simple", "Un tren que ya pasó.")
 	})
 
-	if _, err := tut.Correct(context.Background(), "I go yesterday to the beach"); err != nil {
+	if _, err := tut.Correct(context.Background(), "I go yesterday to the beach", false); err != nil {
 		t.Fatal(err)
 	}
 	sys := f.requests()[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
-	if strings.Contains(sys, "past simple (5 times)") {
-		t.Errorf("a category that already has a mnemonic must not be asked again:\n%s", sys)
+	// It is still reported as recurring (so callbacks are real), but it must not
+	// be asked for a mnemonic again.
+	if !strings.Contains(sys, "past simple (5 times)") {
+		t.Errorf("a recurring category must still be listed:\n%s", sys)
+	}
+	if strings.Contains(sys, "has no mnemonic yet (past simple)") {
+		t.Errorf("a category with a mnemonic must not be asked again:\n%s", sys)
 	}
 }
 
@@ -658,7 +663,7 @@ func TestReviewPersonaSetsTheToneOfTheNotes(t *testing.T) {
 	tut, _ := setup(t, f, 8192)
 	tut.SetPersonas("", "Roast them affectionately.")
 
-	if _, err := tut.Correct(context.Background(), "I have went to the cinema"); err != nil {
+	if _, err := tut.Correct(context.Background(), "I have went to the cinema", false); err != nil {
 		t.Fatal(err)
 	}
 	sys := f.requests()[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
@@ -675,7 +680,7 @@ func TestNoReviewPersonaKeepsTheNeutralNote(t *testing.T) {
 	f := &fakeOllama{json: `{"corrections":[],"facts":[]}`}
 	tut, _ := setup(t, f, 8192)
 
-	if _, err := tut.Correct(context.Background(), "I have went to the cinema"); err != nil {
+	if _, err := tut.Correct(context.Background(), "I have went to the cinema", false); err != nil {
 		t.Fatal(err)
 	}
 	sys := f.requests()[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
@@ -713,7 +718,7 @@ func TestGermanCorrectionsNameTheLanguage(t *testing.T) {
 	tut, _ := setup(t, f, 8192)
 	tut.st.Target = "de"
 
-	if _, err := tut.Correct(context.Background(), "Ich habe gestern ins Kino gegangen"); err != nil {
+	if _, err := tut.Correct(context.Background(), "Ich habe gestern ins Kino gegangen", false); err != nil {
 		t.Fatal(err)
 	}
 	sys := f.requests()[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
@@ -748,5 +753,30 @@ func TestProgressSummarySendsTheNumbers(t *testing.T) {
 		if !strings.Contains(user, want) {
 			t.Errorf("numbers missing %q:\n%s", want, user)
 		}
+	}
+}
+
+// TestVoiceTurnsWarnAboutMishearings: a transcription glitch is not a language
+// mistake, and the review pass must not roast the learner for it.
+func TestVoiceTurnsWarnAboutMishearings(t *testing.T) {
+	f := &fakeOllama{json: `{"corrections":[],"facts":[]}`}
+	tut, _ := setup(t, f, 8192)
+	if _, err := tut.Correct(context.Background(), "I went to the cinema", true); err != nil {
+		t.Fatal(err)
+	}
+	sys := f.requests()[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if !strings.Contains(sys, "transcribed from speech") {
+		t.Errorf("a voice turn should warn about mis-hearings:\n%s", sys)
+	}
+
+	// A typed turn says nothing about speech.
+	f2 := &fakeOllama{json: `{"corrections":[],"facts":[]}`}
+	tut2, _ := setup(t, f2, 8192)
+	if _, err := tut2.Correct(context.Background(), "I went to the cinema", false); err != nil {
+		t.Fatal(err)
+	}
+	sys2 := f2.requests()[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if strings.Contains(sys2, "transcribed from speech") {
+		t.Errorf("a typed turn must not mention speech:\n%s", sys2)
 	}
 }

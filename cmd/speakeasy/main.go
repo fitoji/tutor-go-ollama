@@ -190,7 +190,7 @@ func run() error {
 	}
 	tut.FoldAsync(ctx, func(err error) { fmt.Fprintln(os.Stderr, "\n[memoria]", err) })
 
-	runTurn := func(line string) {
+	runTurn := func(line string, fromVoice bool) {
 		turnCtx, cancel := context.WithCancel(ctx)
 		mu.Lock()
 		cancelTurn = cancel
@@ -228,7 +228,7 @@ func run() error {
 		// The review pass runs every turn: it carries the corrections and the
 		// facts the tutor remembers, so --corrections only hides the ✎ lines.
 		spin := ui.Start(os.Stdout, sty.Enabled(), "corrigiendo…")
-		rev, err := tut.Correct(turnCtx, line)
+		rev, err := tut.Correct(turnCtx, line, fromVoice)
 		spin.Stop()
 		if err != nil && !errors.Is(err, context.Canceled) {
 			fmt.Fprintln(os.Stderr, "[correcciones]", err)
@@ -272,7 +272,7 @@ func run() error {
 		case strings.HasPrefix(line, "/"):
 			command(ctx, line, cl, cfg, store, tut, spk, rec, app)
 		default:
-			runTurn(line)
+			runTurn(line, false)
 		}
 	}
 	finish()
@@ -604,7 +604,7 @@ func transcriptionPrompt(d conv.Data, cfg config.Config) string {
 // recordTurn records one utterance, transcribes it and hands the text to run.
 // It is split out of the loop so a test can drive it with fake recorder and
 // transcriber, without a microphone or a network.
-func recordTurn(ctx context.Context, sc *bufio.Scanner, rec voice.Recorder, tr voice.Transcriber, lang, prompt string, max time.Duration, out io.Writer, run func(string), sty ui.Style) error {
+func recordTurn(ctx context.Context, sc *bufio.Scanner, rec voice.Recorder, tr voice.Transcriber, lang, prompt string, max time.Duration, out io.Writer, run func(string, bool), sty ui.Style) error {
 	fmt.Fprint(out, "🎙  grabando… (Enter para cortar)")
 	stopMeter := startMeter(out, rec, sty.Enabled())
 	rctx, cancel := context.WithCancel(ctx)
@@ -654,7 +654,7 @@ func recordTurn(ctx context.Context, sc *bufio.Scanner, rec voice.Recorder, tr v
 		return nil
 	}
 	fmt.Fprintf(out, "%s %s\n", sty.Cyan("tú (voz)>"), text)
-	run(text)
+	run(text, true)
 	return nil
 }
 
