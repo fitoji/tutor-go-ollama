@@ -15,7 +15,18 @@ go build -o speakeasy ./cmd/speakeasy
 ./speakeasy --mute             # solo texto: no hace falta Ollama
 ```
 
-Al arrancar limpia la pantalla, solo si es una terminal: `--no-clear` lo evita y `--selftest` nunca limpia (un script está leyendo esa salida).
+Al arrancar limpia la pantalla, solo si es una terminal (`--no-clear` lo evita; `--selftest` nunca limpia, porque un script está leyendo esa salida) y te presenta dónde estás:
+
+```
+🗣️  speakeasy — practicá inglés hablando, desde la terminal
+
+   Enter envía · Enter vacío habla · /help comandos · /quit salir
+
+   👤 fito · inglés · B1 · 4 turnos · racha 1
+   🔌 ollama · qwen3.5:9b · voz phonon/Freya · mic whisper · ctx 8192
+```
+
+Es la vista rápida; `/status` es la completa (con los modelos que Ollama tiene cargados y el tamaño del último prompt).
 
 Escribes en inglés (o en español; el tutor siempre responde en inglés). Mientras suena la respuesta se calculan las correcciones de tu mensaje. Si escribes otra cosa mientras habla, se interrumpe. `Ctrl-C` corta el turno; en el prompt, sale.
 

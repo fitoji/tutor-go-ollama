@@ -163,7 +163,7 @@ func run() error {
 		}
 	}()
 
-	fmt.Println(sty.Dim(fmt.Sprintf("speakeasy · %s · %s: %s · voz=%s · mic=%s · ctx=%d · /help para ver comandos", cfg.User, cfg.Provider, cfg.LLM, ttsLabel(cfg, spk), micLabel(cfg, vs), cfg.NumCtx)))
+	welcome(os.Stdout, sty, cfg, store, spk, vs)
 	if cfg.Remote() {
 		fmt.Printf("aviso: tus mensajes se envían a %s\n", hostOf(cfg.APIBase))
 	}
@@ -417,6 +417,29 @@ func voiceInput(cfg config.Config) voiceSetup {
 		}
 		return voiceSetup{Rec: rec, Tr: voice.GroqTranscriber{Base: cfg.STTBase, Key: cfg.STTKey, Model: cfg.STTModel}}
 	}
+}
+
+// welcome introduces the app and shows where the learner stands. It reads only
+// the local state: /status is the full view, with the models Ollama has loaded.
+func welcome(w io.Writer, st ui.Style, cfg config.Config, store *conv.Store, spk *speech.Speaker, vs voiceSetup) {
+	view := store.View()
+	prog, _ := conv.ComputeProgress(view, "all", time.Now())
+	lang := map[string]string{"en": "inglés", "de": "alemán"}[cfg.Target]
+	if lang == "" {
+		lang = cfg.Target
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "🗣️  %s — practicá %s hablando, desde la terminal\n", st.Bold("speakeasy"), lang)
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "   %s\n", st.Dim("Enter envía · Enter vacío habla · /help comandos · /quit salir"))
+	fmt.Fprintln(w)
+	turns := fmt.Sprintf("%d turnos", prog.Turns)
+	if prog.Turns == 1 {
+		turns = "1 turno"
+	}
+	fmt.Fprintf(w, "   👤 %s · %s · %s · %s · racha %d\n", cfg.User, lang, view.Profile.Level, turns, prog.Streak)
+	fmt.Fprintf(w, "   🔌 %s · %s · voz %s · mic %s · ctx %d\n", cfg.Provider, cfg.LLM, ttsLabel(cfg, spk), micLabel(cfg, vs), cfg.NumCtx)
+	fmt.Fprintln(w)
 }
 
 // printProgress renders one period. Numbers always print; the note is optional.

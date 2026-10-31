@@ -1220,3 +1220,29 @@ func TestStartMeterDrawsTheLevel(t *testing.T) {
 		t.Errorf("a recorder without Level wrote %q", none.String())
 	}
 }
+
+// TestWelcomeShowsWhereYouAre is the first thing a learner reads: what the app
+// is, the two keys that matter, and where their profile stands.
+func TestWelcomeShowsWhereYouAre(t *testing.T) {
+	store := newStore(t)
+	store.Update(func(d *conv.Data) {
+		d.AddTurn("user", "hello")
+		d.Profile.Level = "B2"
+	})
+	var out strings.Builder
+	cfg := config.Config{User: "Ana", Target: "en", Provider: "groq", LLM: "llama", NumCtx: 4096}
+	welcome(&out, ui.New(false), cfg, store, nil, voiceSetup{})
+
+	got := out.String()
+	for _, want := range []string{"speakeasy", "practicá inglés", "Enter vacío habla", "/help", "Ana", "B2", "1 turno", "racha 1", "voz off", "mic off"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("welcome should mention %q:\n%s", want, got)
+		}
+	}
+	// German says so.
+	var de strings.Builder
+	welcome(&de, ui.New(false), config.Config{User: "Ana", Target: "de", Provider: "ollama", LLM: "m", NumCtx: 8192}, newStore(t), nil, voiceSetup{})
+	if !strings.Contains(de.String(), "practicá alemán") {
+		t.Errorf("german welcome:\n%s", de.String())
+	}
+}
