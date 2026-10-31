@@ -411,7 +411,7 @@ func voiceInput(cfg config.Config) voiceSetup {
 		}
 		if _, err := os.Stat(cfg.WhisperModel); err != nil {
 			return voiceSetup{
-				Warn:   fmt.Sprintf("aviso: no encuentro el modelo de whisper en %s (bajá ggml-small.en.bin de ggerganov/whisper.cpp); el Enter vacío queda sin efecto", cfg.WhisperModel),
+				Warn:   fmt.Sprintf("aviso: no encuentro el modelo de whisper en %s (bajá el .bin de ggerganov/whisper.cpp; el default es ggml-large-v3-turbo-q8_0.bin); el Enter vacío queda sin efecto", cfg.WhisperModel),
 				Reason: "falta el modelo de whisper",
 			}
 		}
@@ -419,7 +419,7 @@ func voiceInput(cfg config.Config) voiceSetup {
 		// wrong, which is worse. Refuse and say which model to get.
 		if cfg.Target != "en" && strings.HasSuffix(strings.ToLower(cfg.WhisperModel), ".en.bin") {
 			return voiceSetup{
-				Warn:   fmt.Sprintf("aviso: %s solo transcribe inglés, así que no puedo transcribir %s; bajá el modelo multilingüe (ggml-small.bin) o pasá --whisper-model; el Enter vacío queda sin efecto", cfg.WhisperModel, cfg.Target),
+				Warn:   fmt.Sprintf("aviso: %s solo transcribe inglés, así que no puedo transcribir %s; bajá el multilingüe (ggml-large-v3-turbo-q8_0.bin) o pasá --whisper-model; el Enter vacío queda sin efecto", cfg.WhisperModel, cfg.Target),
 				Reason: "modelo de whisper solo inglés",
 			}
 		}

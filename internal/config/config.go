@@ -148,7 +148,7 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.STTBase, "stt-base", envOr("SPEAKEASY_STT_BASE", "https://api.groq.com/openai/v1"), "OpenAI-compatible transcription base URL")
 	fs.StringVar(&c.STTKeyEnv, "stt-key-env", envOr("SPEAKEASY_STT_KEY_ENV", "GROQ_API_KEY"), "environment variable with the transcription key")
 	fs.StringVar(&c.WhisperBin, "whisper-bin", envOr("SPEAKEASY_WHISPER_BIN", "whisper-cli"), "whisper.cpp binary (for --stt whisper)")
-	fs.StringVar(&c.WhisperModel, "whisper-model", envOr("SPEAKEASY_WHISPER_MODEL", filepath.Join(home, ".speakeasy", "models", "ggml-small.en.bin")), "whisper.cpp ggml model (for --stt whisper)")
+	fs.StringVar(&c.WhisperModel, "whisper-model", envOr("SPEAKEASY_WHISPER_MODEL", filepath.Join(home, ".speakeasy", "models", "ggml-large-v3-turbo-q8_0.bin")), "whisper.cpp ggml model (for --stt whisper)")
 	fs.IntVar(&c.RecordMaxSec, "record-max", envInt("SPEAKEASY_RECORD_MAX", 30), "longest recording, in seconds")
 	fs.IntVar(&c.VADMs, "vad", envInt("SPEAKEASY_VAD", 800), "stop recording after this many ms of silence once you speak (0 = only the Enter stops it)")
 	if err := fs.Parse(args); err != nil {
